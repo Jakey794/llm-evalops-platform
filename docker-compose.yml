@@ -1,0 +1,5 @@
+# Local development services will be added in Week 1 Day 4.
+# Planned service:
+# - PostgreSQL database for eval datasets, prompt versions, runs, and results.
+
+services: {}
