@@ -32,3 +32,6 @@ yarn-error.log*
 
 # Docker / local data
 postgres_data/
+
+# Python package/build artifacts
+*.egg-info/
