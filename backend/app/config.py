@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     service_name: str = "llm-evalops-backend"
     version: str = "0.1.0"
     backend_cors_origins: str = "http://localhost:3000"
+    database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/evalops"
 
     model_config = SettingsConfigDict(
         env_file="../.env",

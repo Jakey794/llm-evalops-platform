@@ -5,8 +5,10 @@ description = "FastAPI backend for the LLM Reliability + EvalOps Platform"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.30.0",
     "pydantic-settings>=2.4.0",
+    "psycopg[binary]>=3.0",
+    "sqlalchemy>=2.0",
+    "uvicorn[standard]>=0.30.0",
 ]
 
 [project.optional-dependencies]
