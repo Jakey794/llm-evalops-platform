@@ -13,6 +13,8 @@ RUN pip install uv \
     && uv sync --locked --no-dev --no-install-project \
     && useradd --create-home --uid 10001 appuser
 
+COPY alembic.ini ./
+COPY alembic ./alembic
 COPY app ./app
 
 USER appuser
