@@ -2,15 +2,20 @@
 
 A production-shaped platform for managing and evaluating the reliability of LLM-powered applications.
 
-## Week 1 Status
+## Week 2 Status
 
-Week 1 establishes the application foundation:
+Week 2 adds dataset management to the application foundation:
 
 - Next.js frontend dashboard shell
 - FastAPI backend with health checks
 - PostgreSQL local development service
 - Backend container image
 - Backend and frontend continuous integration
+- Dataset and test-case schema with Alembic migrations
+- Atomic JSONL dataset imports with per-line validation
+- Dataset list, detail, and test-case APIs
+- Bundled support-classification and incident-triage seed datasets
+- Frontend dataset browser
 
 ## Architecture
 
@@ -28,6 +33,8 @@ docker compose up -d postgres
 
 cd backend
 uv sync --locked --extra dev
+uv run alembic upgrade head
+uv run python -m app.seed.load_seed_data
 
 cd ../frontend
 npm ci
@@ -38,6 +45,8 @@ npm ci
 Run these commands from `backend/`:
 
 ```bash
+uv run alembic upgrade head
+uv run python -m app.seed.load_seed_data
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 uv run pytest
 uv run ruff format --check .
@@ -45,6 +54,29 @@ uv run ruff check .
 ```
 
 The health endpoint is available at `http://localhost:8000/health`.
+
+### Dataset API
+
+With the backend running, list datasets and inspect one by replacing `<dataset-id>` with an ID
+from the list response:
+
+```bash
+curl http://localhost:8000/datasets
+curl http://localhost:8000/datasets/<dataset-id>
+curl http://localhost:8000/datasets/<dataset-id>/test-cases
+```
+
+Import a JSONL file atomically (requires `jq`):
+
+```bash
+jq -Rs \
+  '{name: "Support Classification Copy", workflow_type: "support_classification", source_filename: "support_classification.jsonl", jsonl_content: .}' \
+  backend/app/seed/support_classification.jsonl \
+  | curl --fail-with-body -X POST http://localhost:8000/datasets/import-jsonl \
+      -H 'Content-Type: application/json' --data-binary @-
+```
+
+An invalid line or duplicate test-case ID rejects the entire import without creating a dataset.
 
 ## Frontend
 
@@ -56,7 +88,8 @@ npm run check
 npm run build
 ```
 
-The frontend is available at `http://localhost:3000`.
+The frontend is available at `http://localhost:3000`. Open the dataset browser at
+`http://localhost:3000/datasets` after starting the backend and loading seed data.
 
 ## Backend Docker Image
 
@@ -76,10 +109,3 @@ The standalone container health check reports a degraded status until PostgreSQL
 - Vercel will deploy `frontend/`.
 - Cloud Run will deploy the backend container later.
 - No deployment automation is included yet.
-
-## Week 2 Next Steps
-
-- Define the database schema.
-- Add Alembic migrations.
-- Add JSONL dataset import.
-- Seed incident and support datasets.
