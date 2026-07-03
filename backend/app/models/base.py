@@ -1,4 +1,5 @@
-from sqlalchemy import MetaData
+from sqlalchemy import JSON, MetaData
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase
 
 NAMING_CONVENTION = {
@@ -8,6 +9,8 @@ NAMING_CONVENTION = {
     "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
     "pk": "pk_%(table_name)s",
 }
+
+JSON_DOCUMENT = JSON().with_variant(JSONB(), "postgresql")
 
 
 class Base(DeclarativeBase):

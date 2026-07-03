@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,6 +10,8 @@ class Settings(BaseSettings):
     version: str = "0.1.0"
     backend_cors_origins: str = "http://localhost:3000"
     database_url: str = "postgresql+psycopg://postgres:postgres@localhost:5432/evalops"
+    openai_api_key: str | None = None
+    openai_timeout_seconds: float = Field(default=30.0, gt=0)
 
     model_config = SettingsConfigDict(
         env_file="../.env",

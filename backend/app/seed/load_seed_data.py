@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db import get_session_factory
-from app.models import Dataset, TestCase
+from app.models import Dataset, PromptVersion, TestCase
 from app.services.jsonl_importer import JsonlImportResult, parse_jsonl_test_cases
 
 SEED_DIRECTORY = Path(__file__).parent
@@ -28,6 +28,21 @@ class SeedLoadSummary:
     status: str
 
 
+@dataclass(frozen=True)
+class PromptSeedDefinition:
+    name: str
+    workflow_type: str
+    version_label: str
+    template: str
+
+
+@dataclass(frozen=True)
+class PromptSeedLoadSummary:
+    prompt_name: str
+    version_label: str
+    status: str
+
+
 SEED_DEFINITIONS = (
     SeedDefinition(
         filename="support_classification.jsonl",
@@ -40,6 +55,33 @@ SEED_DEFINITIONS = (
         name="Incident Triage Seed",
         description="Realistic incident packets for severity and root-cause triage evaluation.",
         workflow_type="incident_triage",
+    ),
+)
+
+PROMPT_SEED_DEFINITIONS = (
+    PromptSeedDefinition(
+        name="incident_triage_baseline",
+        workflow_type="incident_triage",
+        version_label="v1",
+        template=(
+            "You are an incident triage assistant. Analyze the incident and return only a JSON "
+            "object with severity (one of sev-1, sev-2, sev-3, sev-4), impacted_service, and "
+            "likely_root_cause.\n\n"
+            "Title: {{ title }}\n"
+            "Symptoms: {{ symptoms }}\n"
+            "Started at: {{ started_at }}"
+        ),
+    ),
+    PromptSeedDefinition(
+        name="support_classification_baseline",
+        workflow_type="support_classification",
+        version_label="v1",
+        template=(
+            "You are a support ticket classifier. Return only a JSON object with category set to "
+            "one of billing, bug_report, account_access, feature_request, refund, or "
+            "technical_support.\n\n"
+            "Ticket: {{ ticket }}"
+        ),
     ),
 )
 
@@ -96,6 +138,56 @@ def load_seed_data() -> list[SeedLoadSummary]:
     return summaries
 
 
+def load_prompt_versions() -> list[PromptSeedLoadSummary]:
+    """Load bundled prompt versions, skipping versions that already exist."""
+
+    session_factory = get_session_factory()
+    summaries: list[PromptSeedLoadSummary] = []
+
+    for definition in PROMPT_SEED_DEFINITIONS:
+        with session_factory() as db:
+            existing_id = db.scalar(
+                select(PromptVersion.id).where(
+                    PromptVersion.workflow_type == definition.workflow_type,
+                    PromptVersion.name == definition.name,
+                    PromptVersion.version_label == definition.version_label,
+                )
+            )
+            if existing_id is not None:
+                summary = PromptSeedLoadSummary(
+                    prompt_name=definition.name,
+                    version_label=definition.version_label,
+                    status="skipped",
+                )
+                summaries.append(summary)
+                _print_prompt_summary(summary)
+                continue
+
+            prompt_version = PromptVersion(
+                name=definition.name,
+                workflow_type=definition.workflow_type,
+                version_label=definition.version_label,
+                template=definition.template,
+            )
+
+            try:
+                db.add(prompt_version)
+                db.commit()
+            except SQLAlchemyError:
+                db.rollback()
+                raise
+
+        summary = PromptSeedLoadSummary(
+            prompt_name=definition.name,
+            version_label=definition.version_label,
+            status="imported",
+        )
+        summaries.append(summary)
+        _print_prompt_summary(summary)
+
+    return summaries
+
+
 def _parse_seed(definition: SeedDefinition) -> JsonlImportResult:
     path = SEED_DIRECTORY / definition.filename
     parsed = parse_jsonl_test_cases(
@@ -114,5 +206,10 @@ def _print_summary(summary: SeedLoadSummary) -> None:
     )
 
 
+def _print_prompt_summary(summary: PromptSeedLoadSummary) -> None:
+    print(f"{summary.prompt_name}:{summary.version_label} status={summary.status}")
+
+
 if __name__ == "__main__":
     load_seed_data()
+    load_prompt_versions()

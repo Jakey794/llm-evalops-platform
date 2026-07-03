@@ -11,6 +11,7 @@ from app.models.base import Base
 
 if TYPE_CHECKING:
     from app.models.dataset import Dataset
+    from app.models.eval_result import EvalResult
 
 
 class TestCase(Base):
@@ -40,3 +41,8 @@ class TestCase(Base):
     )
 
     dataset: Mapped[Dataset] = relationship(back_populates="test_cases")
+    eval_results: Mapped[list[EvalResult]] = relationship(
+        back_populates="test_case",
+        cascade="all, delete",
+        passive_deletes=True,
+    )

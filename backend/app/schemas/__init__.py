@@ -5,6 +5,14 @@ from app.schemas.datasets import (
     DatasetListItem,
     DatasetResponse,
 )
+from app.schemas.eval_results import EvalResultCreate, EvalResultListItem, EvalResultResponse
+from app.schemas.eval_runs import EvalRunCreate, EvalRunListItem, EvalRunResponse
+from app.schemas.model_configs import ModelConfigCreate, ModelConfigListItem, ModelConfigResponse
+from app.schemas.prompt_versions import (
+    PromptVersionCreate,
+    PromptVersionListItem,
+    PromptVersionResponse,
+)
 from app.schemas.test_cases import TestCaseResponse
 
 __all__ = [
@@ -13,5 +21,17 @@ __all__ = [
     "DatasetImportResponse",
     "DatasetListItem",
     "DatasetResponse",
+    "EvalResultCreate",
+    "EvalResultListItem",
+    "EvalResultResponse",
+    "EvalRunCreate",
+    "EvalRunListItem",
+    "EvalRunResponse",
+    "ModelConfigCreate",
+    "ModelConfigListItem",
+    "ModelConfigResponse",
+    "PromptVersionCreate",
+    "PromptVersionListItem",
+    "PromptVersionResponse",
     "TestCaseResponse",
 ]
