@@ -1,6 +1,8 @@
 import type {
 	DatasetDetail,
 	DatasetSummary,
+	EvalResult,
+	EvalRun,
 	HealthResponse,
 	TestCase,
 } from "@/lib/types";
@@ -25,6 +27,20 @@ export async function getDatasetTestCases(
 ): Promise<TestCase[]> {
 	return fetchApi<TestCase[]>(
 		`/datasets/${encodeURIComponent(datasetId)}/test-cases`,
+	);
+}
+
+export async function getEvalRuns(): Promise<EvalRun[]> {
+	return fetchApi<EvalRun[]>("/eval-runs");
+}
+
+export async function getEvalRun(runId: string): Promise<EvalRun> {
+	return fetchApi<EvalRun>(`/eval-runs/${encodeURIComponent(runId)}`);
+}
+
+export async function getEvalRunResults(runId: string): Promise<EvalResult[]> {
+	return fetchApi<EvalResult[]>(
+		`/eval-runs/${encodeURIComponent(runId)}/results`,
 	);
 }
 
