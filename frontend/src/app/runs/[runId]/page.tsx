@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { MetricCard } from "@/components/dashboard/metric-card";
+import { FailedExampleTable } from "@/components/runs/failed-example-table";
 import { ResultTable } from "@/components/runs/result-table";
 import { RunSummary } from "@/components/runs/run-summary";
-import { getEvalRun, getEvalRunResults } from "@/lib/api";
+import { getEvalRun, getEvalRunResults, getFailedExamples } from "@/lib/api";
 
 export default async function RunDetailPage({
 	params,
@@ -9,9 +11,10 @@ export default async function RunDetailPage({
 	params: Promise<{ runId: string }>;
 }) {
 	const { runId } = await params;
-	const [run, results] = await Promise.all([
+	const [run, results, failedExamples] = await Promise.all([
 		getEvalRun(runId),
 		getEvalRunResults(runId),
+		getFailedExamples(runId),
 	]);
 
 	return (
@@ -35,7 +38,43 @@ export default async function RunDetailPage({
 			</header>
 
 			<section className="mt-8">
+				<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+					<MetricCard
+						helperText="Share of cases meeting the grader threshold"
+						label="Pass rate"
+						value={formatPassRate(run.pass_rate)}
+					/>
+					<MetricCard
+						helperText="Mean deterministic grader score"
+						label="Average score"
+						value={formatScore(run.avg_score)}
+					/>
+					<MetricCard
+						helperText="Cases below the composite threshold"
+						label="Failed cases"
+						value={run.failed_count.toLocaleString("en-US")}
+					/>
+					<MetricCard
+						helperText="Cases included in this evaluation"
+						label="Total cases"
+						value={run.total_count.toLocaleString("en-US")}
+					/>
+				</div>
+			</section>
+
+			<section className="mt-8">
 				<RunSummary run={run} />
+			</section>
+
+			<section className="mt-8">
+				<div className="mb-3">
+					<h3 className="text-lg font-semibold text-white">Failed examples</h3>
+					<p className="mt-1 text-sm text-slate-500">
+						Inspect deterministic grader failures and expected versus actual
+						outputs.
+					</p>
+				</div>
+				<FailedExampleTable examples={failedExamples} />
 			</section>
 
 			<section className="mt-8">
@@ -49,4 +88,12 @@ export default async function RunDetailPage({
 			</section>
 		</div>
 	);
+}
+
+function formatPassRate(value: number | null): string {
+	return value === null ? "—" : `${(value * 100).toFixed(1)}%`;
+}
+
+function formatScore(value: number | null): string {
+	return value === null ? "—" : value.toFixed(3);
 }

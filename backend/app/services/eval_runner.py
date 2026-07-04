@@ -1,3 +1,4 @@
+import json
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -6,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.graders import CompositeGrader, GraderInput, GraderResult
 from app.models import (
     Dataset,
     EvalResult,
@@ -135,6 +137,10 @@ class EvalRunner:
             metrics = calculate_run_metrics(persisted_results)
             eval_run.completed_cases = metrics.completed_cases
             eval_run.error_count = metrics.error_count
+            eval_run.pass_rate = metrics.pass_rate
+            eval_run.avg_score = metrics.avg_score
+            eval_run.failed_count = metrics.failed_count
+            eval_run.total_cases = metrics.total_count
             eval_run.total_cost_usd = metrics.total_cost_usd
             eval_run.avg_latency_ms = metrics.avg_latency_ms
             eval_run.p95_latency_ms = metrics.p95_latency_ms
@@ -207,11 +213,37 @@ class EvalRunner:
                 error=f"{type(exc).__name__}: {exc}",
             )
 
+        parsed_output = response.parsed_json
+        if parsed_output is None:
+            parsed_output = _parse_json(response.text)
+        grader_config = _resolve_grader_config(test_case)
+        grader_result = CompositeGrader().grade(
+            GraderInput(
+                test_case_id=str(test_case.id),
+                workflow_type=test_case.workflow_type,
+                input_data=test_case.input_json,
+                expected_output=test_case.expected_output_json,
+                model_output=(
+                    response.text
+                    if response.text is not None
+                    else parsed_output
+                    if isinstance(parsed_output, dict)
+                    else None
+                ),
+                parsed_output=parsed_output if isinstance(parsed_output, dict) else None,
+                grader_config=grader_config,
+                tags=test_case.tags,
+                difficulty=test_case.difficulty,
+            )
+        )
+        if response.error is not None:
+            grader_result = _provider_error_result(grader_result, response.error)
+
         return EvalResult(
             eval_run_id=eval_run.id,
             test_case_id=test_case.id,
             model_output=response.text,
-            parsed_output=response.parsed_json,
+            parsed_output=parsed_output,
             raw_response=response.raw_response,
             latency_ms=response.latency_ms,
             input_tokens=response.input_tokens,
@@ -222,6 +254,11 @@ class EvalRunner:
                 response.output_tokens,
             ),
             error=response.error,
+            score=grader_result.score,
+            passed=grader_result.passed,
+            grader_feedback=grader_result.feedback,
+            failure_modes=grader_result.failure_modes,
+            grader_breakdown=grader_result.metadata,
         )
 
     def _mark_failed(self, run_id: uuid.UUID) -> None:
@@ -239,3 +276,58 @@ class EvalRunner:
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+def _parse_json(value: str | None) -> dict[str, object] | list[object] | None:
+    if value is None:
+        return None
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, (dict, list)) else None
+
+
+def _resolve_grader_config(test_case: TestCase) -> dict[str, object]:
+    configured = test_case.metadata_json.get("grader_config")
+    if isinstance(configured, dict) and configured:
+        return configured
+
+    expected = test_case.expected_output_json
+    exact_fields = list(expected)
+    return {
+        "json_schema": {
+            "required_fields": exact_fields,
+            "field_types": {field: _json_type_name(value) for field, value in expected.items()},
+            "allow_extra_fields": False,
+        },
+        "exact_match": {"exact_fields": exact_fields},
+    }
+
+
+def _json_type_name(value: object) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, int):
+        return "integer"
+    if isinstance(value, float):
+        return "number"
+    if isinstance(value, list):
+        return "array"
+    return "object"
+
+
+def _provider_error_result(result: GraderResult, error: str) -> GraderResult:
+    failure_modes = list(dict.fromkeys(["provider_error", *result.failure_modes]))
+    return GraderResult(
+        grader_name=result.grader_name,
+        score=0.0,
+        passed=False,
+        feedback=f"Provider error: {error}. {result.feedback}",
+        failure_modes=failure_modes,
+        metadata=result.metadata | {"provider_error": error},
+    )

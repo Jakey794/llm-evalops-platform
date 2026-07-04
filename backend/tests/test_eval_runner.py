@@ -84,6 +84,7 @@ def seed_configuration(
     workflow_type: str = "support_classification",
     prompt_workflow_type: str | None = None,
     case_inputs: list[dict[str, Any]] | None = None,
+    grader_config: dict[str, Any] | None = None,
 ) -> tuple[Dataset, PromptVersion, ModelConfig, list[CaseModel]]:
     now = datetime.now(UTC)
     inputs = (
@@ -108,7 +109,9 @@ def seed_configuration(
                 tags=[],
                 difficulty="easy",
                 workflow_type=workflow_type,
-                metadata_json={},
+                metadata_json=(
+                    {"grader_config": grader_config} if grader_config is not None else {}
+                ),
                 created_at=now + timedelta(seconds=index),
             )
             for index, input_json in enumerate(inputs, start=1)
@@ -168,14 +171,25 @@ def test_successful_run_creates_ordered_result_rows_and_requests(db: Session) ->
     assert eval_run.completed_cases == 2
     assert eval_run.error_count == 0
     assert eval_run.completed_at is not None
-    assert eval_run.pass_rate is None
-    assert eval_run.avg_score is None
+    assert eval_run.pass_rate == 0.5
+    assert eval_run.avg_score == 0.5
+    assert eval_run.failed_count == 1
+    assert eval_run.total_count == 2
     assert eval_run.total_cost_usd == Decimal("0.00000780")
     assert eval_run.avg_latency_ms == 30
     assert eval_run.p95_latency_ms == 35
     assert [result.test_case_id for result in results] == [case.id for case in test_cases]
     assert results[0].parsed_output == {"category": "billing"}
     assert results[1].parsed_output == [{"category": "technical_support"}]
+    assert results[0].score == 1.0
+    assert results[0].passed is True
+    assert results[0].grader_breakdown["breakdown"] == {
+        "json_schema": 1.0,
+        "exact_match": 1.0,
+    }
+    assert results[1].score == 0.0
+    assert results[1].passed is False
+    assert "invalid_json" in results[1].failure_modes
     assert [result.estimated_cost_usd for result in results] == [
         Decimal("0.00000390"),
         Decimal("0.00000390"),
@@ -219,6 +233,10 @@ def test_returned_provider_error_is_stored_and_run_completes(db: Session) -> Non
     assert eval_run.p95_latency_ms == 25
     assert results[0].error == "rate limited"
     assert results[1].error is None
+    assert [result.passed for result in results] == [False, True]
+    assert eval_run.pass_rate == 0.5
+    assert eval_run.avg_score == 0.5
+    assert eval_run.failed_count == 1
 
 
 def test_raised_provider_error_is_stored_and_run_continues(db: Session) -> None:
@@ -245,6 +263,8 @@ def test_raised_provider_error_is_stored_and_run_continues(db: Session) -> None:
     assert eval_run.p95_latency_ms == 25
     assert results[0].error == "RuntimeError: connection reset"
     assert results[1].error is None
+    assert results[0].passed is False
+    assert "provider_error" in results[0].failure_modes
 
 
 def test_render_error_is_isolated_to_its_case(db: Session) -> None:
@@ -270,6 +290,91 @@ def test_render_error_is_isolated_to_its_case(db: Session) -> None:
         results[1].error == "MissingPromptVariableError: Missing required prompt variable: ticket"
     )
     assert len(provider.requests) == 1
+    assert results[1].passed is False
+    assert "provider_error" in results[1].failure_modes
+
+
+def test_invalid_json_is_stored_and_graded_as_failed(db: Session) -> None:
+    dataset, prompt, model_config, _ = seed_configuration(
+        db,
+        case_inputs=[{"ticket": "Malformed response"}],
+        grader_config={
+            "json_schema": {
+                "required_fields": ["category"],
+                "field_types": {"category": "string"},
+            }
+        },
+    )
+    provider = FakeProvider([make_response("{not-json", parsed_json=None)])
+
+    eval_run = EvalRunner(db, provider_factory=lambda _: provider).run(
+        dataset.id,
+        prompt.id,
+        model_config.id,
+    )
+    result = stored_results(db, eval_run.id)[0]
+
+    assert result.model_output == "{not-json"
+    assert result.parsed_output is None
+    assert result.error is None
+    assert result.score == 0.0
+    assert result.passed is False
+    assert result.failure_modes == ["invalid_json"]
+    assert eval_run.pass_rate == 0.0
+    assert eval_run.avg_score == 0.0
+    assert eval_run.failed_count == 1
+
+
+def test_runner_parses_valid_json_when_provider_omits_parsed_output(db: Session) -> None:
+    dataset, prompt, model_config, _ = seed_configuration(
+        db,
+        case_inputs=[{"ticket": "Valid JSON response"}],
+    )
+    provider = FakeProvider([make_response('{"category":"billing"}', parsed_json=None)])
+
+    eval_run = EvalRunner(db, provider_factory=lambda _: provider).run(
+        dataset.id,
+        prompt.id,
+        model_config.id,
+    )
+    result = stored_results(db, eval_run.id)[0]
+
+    assert result.parsed_output == {"category": "billing"}
+    assert result.score == 1.0
+    assert result.passed is True
+
+
+def test_explicit_test_case_grader_config_takes_precedence(db: Session) -> None:
+    dataset, prompt, model_config, _ = seed_configuration(
+        db,
+        case_inputs=[{"ticket": "Explicit grader config"}],
+        grader_config={
+            "composite": {
+                "graders": [{"name": "exact_match", "weight": 1}],
+                "pass_threshold": 0.0,
+            },
+            "exact_match": {"exact_fields": ["category"]},
+        },
+    )
+    provider = FakeProvider(
+        [
+            make_response(
+                '{"category":"technical_support"}',
+                parsed_json={"category": "technical_support"},
+            )
+        ]
+    )
+
+    eval_run = EvalRunner(db, provider_factory=lambda _: provider).run(
+        dataset.id,
+        prompt.id,
+        model_config.id,
+    )
+    result = stored_results(db, eval_run.id)[0]
+
+    assert result.score == 0.0
+    assert result.passed is True
+    assert result.grader_breakdown["breakdown"] == {"exact_match": 0.0}
 
 
 @pytest.mark.parametrize(
@@ -381,6 +486,9 @@ def test_empty_dataset_completes_with_zero_counts(db: Session) -> None:
     assert eval_run.total_cases == 0
     assert eval_run.completed_cases == 0
     assert eval_run.error_count == 0
+    assert eval_run.failed_count == 0
+    assert eval_run.pass_rate is None
+    assert eval_run.avg_score is None
     assert eval_run.completed_at is not None
     assert db.scalar(select(func.count(EvalResult.id))) == 0
     assert provider.requests == []

@@ -28,6 +28,22 @@ def test_valid_row_passes() -> None:
     assert result.valid_cases[0].difficulty is Difficulty.EASY
 
 
+def test_nested_grader_config_is_preserved_in_metadata() -> None:
+    grader_config = {
+        "exact_match": {"exact_fields": ["category"]},
+        "composite": {
+            "graders": [{"name": "exact_match", "weight": 1.0}],
+            "pass_threshold": 1.0,
+        },
+    }
+    result = parse_jsonl_test_cases(
+        json.dumps(make_row(metadata={"source": "seed", "grader_config": grader_config}))
+    )
+
+    assert result.imported_count == 1
+    assert result.valid_cases[0].metadata["grader_config"] == grader_config
+
+
 def test_missing_input_fails() -> None:
     row = make_row()
     del row["input"]

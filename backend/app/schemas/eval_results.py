@@ -19,6 +19,11 @@ class EvalResultCreate(BaseModel):
     output_tokens: int | None = Field(default=None, ge=0)
     estimated_cost_usd: Decimal | None = Field(default=None, ge=0)
     error: str | None = None
+    score: float = Field(default=0.0, ge=0, le=1)
+    passed: bool = False
+    grader_feedback: str = ""
+    failure_modes: list[str] = Field(default_factory=list)
+    grader_breakdown: dict[str, Any] = Field(default_factory=dict)
 
 
 class EvalResultListItem(BaseModel):
@@ -34,8 +39,21 @@ class EvalResultListItem(BaseModel):
     output_tokens: int | None
     estimated_cost_usd: Decimal | None
     error: str | None
+    score: float
+    passed: bool
+    grader_feedback: str
+    failure_modes: list[str]
+    grader_breakdown: dict[str, Any]
     created_at: datetime
 
 
 class EvalResultResponse(EvalResultListItem):
     raw_response: dict[str, Any] | None
+
+
+class FailedExampleResponse(EvalResultListItem):
+    workflow_type: str
+    difficulty: str
+    tags: list[str]
+    input: dict[str, Any]
+    expected_output: dict[str, Any]

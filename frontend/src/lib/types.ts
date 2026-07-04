@@ -58,6 +58,25 @@ export type EvalRun = {
 	avg_latency_ms: number | null;
 	p95_latency_ms: number | null;
 	error_count: number;
+	failed_count: number;
+	total_count: number;
+};
+
+export type ComponentGraderResult = {
+	grader_name: string;
+	score: number;
+	passed: boolean;
+	feedback: string;
+	failure_modes: string[];
+	metadata: Record<string, unknown>;
+};
+
+export type GraderBreakdown = {
+	breakdown?: Record<string, number>;
+	grader_results?: ComponentGraderResult[];
+	pass_threshold?: number;
+	weights?: Record<string, number>;
+	[key: string]: unknown;
 };
 
 export type EvalResult = {
@@ -72,5 +91,18 @@ export type EvalResult = {
 	output_tokens: number | null;
 	estimated_cost_usd: string | null;
 	error: string | null;
+	score: number;
+	passed: boolean;
+	grader_feedback: string;
+	failure_modes: string[];
+	grader_breakdown: GraderBreakdown;
 	created_at: string;
+};
+
+export type FailedExample = Omit<EvalResult, "raw_response"> & {
+	workflow_type: string;
+	difficulty: string;
+	tags: string[];
+	input: Record<string, unknown>;
+	expected_output: Record<string, unknown>;
 };

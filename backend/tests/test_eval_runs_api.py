@@ -67,7 +67,7 @@ def api() -> Generator[ApiContext, None, None]:
                 CaseModel(
                     external_id="case-success",
                     input_json={"ticket": "normal"},
-                    expected_output_json={},
+                    expected_output_json={"ok": True},
                     required_citations=[],
                     tags=[],
                     difficulty="easy",
@@ -77,7 +77,7 @@ def api() -> Generator[ApiContext, None, None]:
                 CaseModel(
                     external_id="case-error",
                     input_json={"ticket": "provider-error"},
-                    expected_output_json={},
+                    expected_output_json={"ok": True},
                     required_citations=[],
                     tags=[],
                     difficulty="hard",
@@ -131,10 +131,19 @@ def test_post_runs_eval_synchronously_and_returns_completed_summary(api: ApiCont
     assert body["total_cases"] == 2
     assert body["completed_cases"] == 2
     assert body["error_count"] == 1
+    assert body["failed_count"] == 1
+    assert body["total_count"] == 2
+    assert body["pass_rate"] == 0.5
+    assert body["avg_score"] == 0.5
     assert body["total_cost_usd"] == "0"
     assert body["avg_latency_ms"] == 7
     assert body["p95_latency_ms"] == 7
     assert body["completed_at"] is not None
+
+    detail_response = api.client.get(f"/eval-runs/{body['id']}")
+    assert detail_response.status_code == 200
+    assert detail_response.json()["pass_rate"] == 0.5
+    assert detail_response.json()["avg_score"] == 0.5
 
 
 def test_results_and_failed_examples_are_frontend_friendly(api: ApiContext) -> None:
@@ -148,11 +157,35 @@ def test_results_and_failed_examples_are_frontend_friendly(api: ApiContext) -> N
     assert len(results) == 2
     assert results[0]["raw_response"] == {"request_id": "fake-response"}
     assert {result["error"] for result in results} == {None, "fake provider failure"}
+    assert {result["passed"] for result in results} == {True, False}
+    assert {result["score"] for result in results} == {1.0, 0.0}
+    assert all("grader_feedback" in result for result in results)
+    assert all("failure_modes" in result for result in results)
+    assert all("grader_breakdown" in result for result in results)
 
     assert failed_response.status_code == 200
-    assert len(failed_response.json()) == 1
-    assert failed_response.json()[0]["error"] == "fake provider failure"
-    assert "raw_response" not in failed_response.json()[0]
+    failed_examples = failed_response.json()
+    assert len(failed_examples) == 1
+    failed = failed_examples[0]
+    assert uuid.UUID(failed["test_case_id"])
+    assert failed["workflow_type"] == "support_classification"
+    assert failed["difficulty"] == "hard"
+    assert failed["tags"] == []
+    assert failed["input"] == {"ticket": "provider-error"}
+    assert failed["expected_output"] == {"ok": True}
+    assert failed["model_output"] is None
+    assert failed["parsed_output"] is None
+    assert failed["score"] == 0.0
+    assert failed["passed"] is False
+    assert "Provider error: fake provider failure" in failed["grader_feedback"]
+    assert "provider_error" in failed["failure_modes"]
+    assert failed["grader_breakdown"]["breakdown"] == {
+        "json_schema": 0.0,
+        "exact_match": 0.0,
+    }
+    assert failed["grader_breakdown"]["provider_error"] == "fake provider failure"
+    assert failed["error"] == "fake provider failure"
+    assert "raw_response" not in failed
 
 
 def test_list_and_detail_return_runs_newest_first(api: ApiContext) -> None:

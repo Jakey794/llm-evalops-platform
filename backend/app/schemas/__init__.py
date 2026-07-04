@@ -5,7 +5,12 @@ from app.schemas.datasets import (
     DatasetListItem,
     DatasetResponse,
 )
-from app.schemas.eval_results import EvalResultCreate, EvalResultListItem, EvalResultResponse
+from app.schemas.eval_results import (
+    EvalResultCreate,
+    EvalResultListItem,
+    EvalResultResponse,
+    FailedExampleResponse,
+)
 from app.schemas.eval_runs import EvalRunCreate, EvalRunListItem, EvalRunResponse
 from app.schemas.model_configs import ModelConfigCreate, ModelConfigListItem, ModelConfigResponse
 from app.schemas.prompt_versions import (
@@ -24,6 +29,7 @@ __all__ = [
     "EvalResultCreate",
     "EvalResultListItem",
     "EvalResultResponse",
+    "FailedExampleResponse",
     "EvalRunCreate",
     "EvalRunListItem",
     "EvalRunResponse",

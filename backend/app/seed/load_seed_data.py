@@ -66,7 +66,7 @@ PROMPT_SEED_DEFINITIONS = (
         template=(
             "You are an incident triage assistant. Analyze the incident and return only a JSON "
             "object with severity (one of sev-1, sev-2, sev-3, sev-4), impacted_service, and "
-            "likely_root_cause.\n\n"
+            "likely_root_cause, plus a concise one-sentence summary.\n\n"
             "Title: {{ title }}\n"
             "Symptoms: {{ symptoms }}\n"
             "Started at: {{ started_at }}"
@@ -77,9 +77,10 @@ PROMPT_SEED_DEFINITIONS = (
         workflow_type="support_classification",
         version_label="v1",
         template=(
-            "You are a support ticket classifier. Return only a JSON object with category set to "
-            "one of billing, bug_report, account_access, feature_request, refund, or "
-            "technical_support.\n\n"
+            "You are a support ticket classifier. Return only a JSON object with category, "
+            "priority, and routed_team. Category must be one of billing, bug_report, "
+            "account_access, feature_request, refund, or technical_support. Priority must be "
+            "one of low, normal, high, or urgent.\n\n"
             "Ticket: {{ ticket }}"
         ),
     ),

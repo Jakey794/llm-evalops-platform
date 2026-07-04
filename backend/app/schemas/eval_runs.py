@@ -34,6 +34,8 @@ class EvalRunListItem(BaseModel):
     avg_latency_ms: float | None
     p95_latency_ms: float | None
     error_count: int
+    failed_count: int
+    total_count: int
 
 
 class EvalRunResponse(EvalRunListItem):

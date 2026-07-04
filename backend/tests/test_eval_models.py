@@ -81,6 +81,7 @@ def test_eval_run_foreign_keys_defaults_and_indexes() -> None:
     assert table.c.p95_latency_ms.nullable
     assert table.c.total_cost_usd.type.precision == 14
     assert table.c.total_cost_usd.type.scale == 8
+    assert not table.c.failed_count.nullable
 
 
 def test_eval_result_constraints_json_types_and_foreign_keys() -> None:
@@ -98,10 +99,13 @@ def test_eval_result_constraints_json_types_and_foreign_keys() -> None:
     assert eval_run_fk.ondelete == "CASCADE"
     assert test_case_fk.target_fullname == "test_cases.id"
     assert test_case_fk.ondelete == "CASCADE"
-    for column_name in ("parsed_output", "raw_response"):
+    for column_name in ("parsed_output", "raw_response", "failure_modes", "grader_breakdown"):
         column_type = table.c[column_name].type
         assert column_type.compile(dialect=postgresql.dialect()) == "JSONB"
         assert column_type.compile(dialect=sqlite.dialect()) == "JSON"
+    assert not table.c.score.nullable
+    assert not table.c.passed.nullable
+    assert not table.c.grader_feedback.nullable
 
 
 def test_eval_runner_relationships_are_bidirectional_with_expected_cascades() -> None:
@@ -175,6 +179,11 @@ def test_eval_runner_object_graph_links_existing_dataset_and_test_case() -> None
         output_tokens=4,
         estimated_cost_usd=Decimal("0.00001234"),
         error=None,
+        score=1.0,
+        passed=True,
+        grader_feedback="Matched expected output.",
+        failure_modes=[],
+        grader_breakdown={"breakdown": {"exact_match": 1.0}},
         created_at=now,
     )
     eval_run = EvalRun(
@@ -194,6 +203,7 @@ def test_eval_runner_object_graph_links_existing_dataset_and_test_case() -> None
         avg_latency_ms=125.5,
         p95_latency_ms=125.5,
         error_count=0,
+        failed_count=0,
         results=[eval_result],
     )
 

@@ -29,6 +29,9 @@ def test_seed_prompt_templates_render_existing_workflow_inputs() -> None:
     assert '["100% of checkout requests return 503"]' in incident_prompt
     assert "2026-05-04T14:02:00Z" in incident_prompt
     assert "I was charged twice." in support_prompt
+    assert "summary" in incident_prompt
+    assert "priority" in support_prompt
+    assert "routed_team" in support_prompt
     assert "{{" not in incident_prompt
     assert "{{" not in support_prompt
 

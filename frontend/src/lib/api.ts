@@ -3,6 +3,7 @@ import type {
 	DatasetSummary,
 	EvalResult,
 	EvalRun,
+	FailedExample,
 	HealthResponse,
 	TestCase,
 } from "@/lib/types";
@@ -41,6 +42,14 @@ export async function getEvalRun(runId: string): Promise<EvalRun> {
 export async function getEvalRunResults(runId: string): Promise<EvalResult[]> {
 	return fetchApi<EvalResult[]>(
 		`/eval-runs/${encodeURIComponent(runId)}/results`,
+	);
+}
+
+export async function getFailedExamples(
+	runId: string,
+): Promise<FailedExample[]> {
+	return fetchApi<FailedExample[]>(
+		`/eval-runs/${encodeURIComponent(runId)}/failed-examples`,
 	);
 }
 

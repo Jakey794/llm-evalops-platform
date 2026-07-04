@@ -5,7 +5,9 @@ export function ResultTable({ results }: { results: EvalResult[] }) {
 	if (results.length === 0) {
 		return (
 			<div className="rounded-lg border border-dashed border-slate-800 bg-slate-950 p-10 text-center">
-				<p className="text-sm font-medium text-slate-300">No results stored</p>
+				<p className="text-sm font-medium text-slate-300">
+					No results for this run yet
+				</p>
 				<p className="mt-1 text-sm text-slate-500">
 					This run did not persist any test-case results.
 				</p>
@@ -19,11 +21,14 @@ export function ResultTable({ results }: { results: EvalResult[] }) {
 				<thead className="bg-slate-900/60 text-xs uppercase tracking-wide text-slate-500">
 					<tr>
 						<Header>Test case</Header>
+						<Header>Score</Header>
+						<Header>Outcome</Header>
 						<Header>Latency</Header>
 						<Header>Input tokens</Header>
 						<Header>Output tokens</Header>
 						<Header>Cost</Header>
 						<Header>Error</Header>
+						<Header>Grader feedback</Header>
 						<Header>Model output</Header>
 					</tr>
 				</thead>
@@ -37,6 +42,10 @@ export function ResultTable({ results }: { results: EvalResult[] }) {
 								>
 									{result.test_case_id}
 								</code>
+							</td>
+							<Metric value={result.score.toFixed(3)} />
+							<td className="px-4 py-4">
+								<OutcomeBadge passed={result.passed} />
 							</td>
 							<Metric value={formatLatency(result.latency_ms)} />
 							<Metric value={formatInteger(result.input_tokens)} />
@@ -54,6 +63,20 @@ export function ResultTable({ results }: { results: EvalResult[] }) {
 									<span className="text-slate-600">—</span>
 								)}
 							</td>
+							<td className="max-w-72 px-4 py-4 text-xs">
+								{result.grader_feedback ? (
+									<details>
+										<summary className="cursor-pointer text-slate-300">
+											{truncate(result.grader_feedback, 80)}
+										</summary>
+										<GraderDetail result={result} />
+									</details>
+								) : (
+									<span className="text-slate-600">
+										No grader feedback available
+									</span>
+								)}
+							</td>
 							<td className="max-w-sm px-4 py-4">
 								<p
 									className="line-clamp-3 whitespace-pre-wrap break-words text-xs leading-5 text-slate-300"
@@ -68,6 +91,41 @@ export function ResultTable({ results }: { results: EvalResult[] }) {
 			</table>
 		</div>
 	);
+}
+
+function OutcomeBadge({ passed }: { passed: boolean }) {
+	return (
+		<span
+			className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+				passed ? "bg-emerald-950 text-emerald-300" : "bg-rose-950 text-rose-300"
+			}`}
+		>
+			{passed ? "Passed" : "Failed"}
+		</span>
+	);
+}
+
+function GraderDetail({ result }: { result: EvalResult }) {
+	const components = result.grader_breakdown.grader_results ?? [];
+	return (
+		<div className="mt-3 space-y-3 border-l border-slate-700 pl-3 text-slate-400">
+			<p className="whitespace-pre-wrap leading-5">{result.grader_feedback}</p>
+			<p>Failure modes: {result.failure_modes.join(", ") || "None recorded"}</p>
+			{components.length > 0 ? (
+				<ul className="space-y-1 font-mono">
+					{components.map((component) => (
+						<li key={component.grader_name}>
+							{component.grader_name}: {component.score.toFixed(3)}
+						</li>
+					))}
+				</ul>
+			) : null}
+		</div>
+	);
+}
+
+function truncate(value: string, length: number): string {
+	return value.length > length ? `${value.slice(0, length - 1)}…` : value;
 }
 
 function Header({ children }: { children: React.ReactNode }) {

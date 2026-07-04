@@ -117,6 +117,7 @@ def test_eval_run_schemas_keep_lifecycle_fields_server_managed() -> None:
         avg_latency_ms=None,
         p95_latency_ms=None,
         error_count=0,
+        failed_count=0,
     )
 
     response = EvalRunResponse.model_validate(eval_run)
@@ -130,6 +131,8 @@ def test_eval_run_schemas_keep_lifecycle_fields_server_managed() -> None:
     assert response.pass_rate is None
     assert response.avg_score is None
     assert response.total_cost_usd == Decimal("0")
+    assert response.failed_count == 0
+    assert response.total_count == 0
     assert set(create.model_dump()) == {"dataset_id", "prompt_version_id", "model_config_id"}
 
     with pytest.raises(ValidationError):
@@ -154,6 +157,11 @@ def test_eval_result_schemas_serialize_json_and_validate_nonnegative_metrics() -
         output_tokens=3,
         estimated_cost_usd=Decimal("0.00001000"),
         error=None,
+        score=1.0,
+        passed=True,
+        grader_feedback="Matched expected output.",
+        failure_modes=[],
+        grader_breakdown={"breakdown": {"exact_match": 1.0}},
         created_at=datetime.now(UTC),
     )
 
@@ -162,6 +170,9 @@ def test_eval_result_schemas_serialize_json_and_validate_nonnegative_metrics() -
 
     assert response.parsed_output == {"category": "billing"}
     assert response.raw_response == {"id": "response-1"}
+    assert response.score == 1.0
+    assert response.passed is True
+    assert response.grader_breakdown == {"breakdown": {"exact_match": 1.0}}
     assert "raw_response" not in list_payload
 
     with pytest.raises(ValidationError):

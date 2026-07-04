@@ -2,12 +2,16 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import or_, select
+from sqlalchemy.orm import Session, selectinload
 
 from app.db import get_db
 from app.models import EvalResult, EvalRun
-from app.schemas.eval_results import EvalResultListItem, EvalResultResponse
+from app.schemas.eval_results import (
+    EvalResultListItem,
+    EvalResultResponse,
+    FailedExampleResponse,
+)
 from app.schemas.eval_runs import EvalRunCreate, EvalRunListItem, EvalRunResponse
 from app.services.eval_runner import (
     EvalResourceNotFoundError,
@@ -84,19 +88,21 @@ def list_eval_run_results(run_id: uuid.UUID, db: DbSession) -> list[EvalResult]:
     )
 
 
-@router.get("/{run_id}/failed-examples", response_model=list[EvalResultListItem])
-def list_failed_examples(run_id: uuid.UUID, db: DbSession) -> list[EvalResult]:
+@router.get("/{run_id}/failed-examples", response_model=list[FailedExampleResponse])
+def list_failed_examples(run_id: uuid.UUID, db: DbSession) -> list[FailedExampleResponse]:
     _get_run_or_404(db, run_id)
-    return list(
+    results = list(
         db.scalars(
             select(EvalResult)
+            .options(selectinload(EvalResult.test_case))
             .where(
                 EvalResult.eval_run_id == run_id,
-                EvalResult.error.is_not(None),
+                or_(EvalResult.passed.is_(False), EvalResult.error.is_not(None)),
             )
             .order_by(EvalResult.created_at, EvalResult.id)
         )
     )
+    return [_to_failed_example(result) for result in results]
 
 
 def _get_run_or_404(db: Session, run_id: uuid.UUID) -> EvalRun:
@@ -104,3 +110,16 @@ def _get_run_or_404(db: Session, run_id: uuid.UUID) -> EvalRun:
     if eval_run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Eval run not found")
     return eval_run
+
+
+def _to_failed_example(result: EvalResult) -> FailedExampleResponse:
+    test_case = result.test_case
+    result_fields = EvalResultListItem.model_validate(result).model_dump()
+    return FailedExampleResponse(
+        **result_fields,
+        workflow_type=test_case.workflow_type,
+        difficulty=test_case.difficulty,
+        tags=test_case.tags,
+        input=test_case.input_json,
+        expected_output=test_case.expected_output_json,
+    )

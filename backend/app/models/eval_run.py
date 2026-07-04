@@ -55,6 +55,9 @@ class EvalRun(Base):
     avg_latency_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
     p95_latency_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
     error_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    failed_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
 
     dataset: Mapped[Dataset] = relationship(back_populates="eval_runs")
     prompt_version: Mapped[PromptVersion] = relationship(back_populates="eval_runs")
@@ -64,3 +67,7 @@ class EvalRun(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+
+    @property
+    def total_count(self) -> int:
+        return self.total_cases

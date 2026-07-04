@@ -22,6 +22,7 @@ export function RunTable({ runs }: { runs: EvalRun[] }) {
 						<Header>Dataset</Header>
 						<Header>Prompt / model</Header>
 						<Header>Progress</Header>
+						<Header>Quality</Header>
 						<Header>Cost</Header>
 						<Header>Latency avg / p95</Header>
 						<Header>Created / started</Header>
@@ -54,6 +55,12 @@ export function RunTable({ runs }: { runs: EvalRun[] }) {
 										{run.error_count} errors
 									</p>
 								) : null}
+							</td>
+							<td className="whitespace-nowrap px-4 py-4 font-mono text-xs text-slate-300">
+								<p>{formatPassRate(run.pass_rate)} pass</p>
+								<p className="mt-2 text-slate-500">
+									{formatScore(run.avg_score)} avg · {run.failed_count} failed
+								</p>
 							</td>
 							<td className="whitespace-nowrap px-4 py-4 font-mono text-slate-300">
 								{formatCost(run.total_cost_usd)}
@@ -110,6 +117,14 @@ export function formatDateTime(value: string | null): string {
 		dateStyle: "medium",
 		timeStyle: "short",
 	}).format(new Date(value));
+}
+
+function formatPassRate(value: number | null): string {
+	return value === null ? "—" : `${(value * 100).toFixed(1)}%`;
+}
+
+function formatScore(value: number | null): string {
+	return value === null ? "—" : value.toFixed(3);
 }
 
 function Header({ children }: { children: React.ReactNode }) {
