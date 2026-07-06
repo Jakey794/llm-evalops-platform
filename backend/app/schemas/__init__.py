@@ -12,6 +12,7 @@ from app.schemas.eval_results import (
     FailedExampleResponse,
 )
 from app.schemas.eval_runs import EvalRunCreate, EvalRunListItem, EvalRunResponse
+from app.schemas.llm_judge import LLMJudgeOutput
 from app.schemas.model_configs import ModelConfigCreate, ModelConfigListItem, ModelConfigResponse
 from app.schemas.prompt_versions import (
     PromptVersionCreate,
@@ -33,6 +34,7 @@ __all__ = [
     "EvalRunCreate",
     "EvalRunListItem",
     "EvalRunResponse",
+    "LLMJudgeOutput",
     "ModelConfigCreate",
     "ModelConfigListItem",
     "ModelConfigResponse",

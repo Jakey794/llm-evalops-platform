@@ -23,6 +23,7 @@ from app.models.base import JSON_DOCUMENT, Base
 
 if TYPE_CHECKING:
     from app.models.eval_run import EvalRun
+    from app.models.grader_result import GraderResult
     from app.models.test_case import TestCase
 
 
@@ -72,3 +73,8 @@ class EvalResult(Base):
 
     eval_run: Mapped[EvalRun] = relationship(back_populates="results")
     test_case: Mapped[TestCase] = relationship(back_populates="eval_results")
+    grader_results: Mapped[list[GraderResult]] = relationship(
+        back_populates="eval_result",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
