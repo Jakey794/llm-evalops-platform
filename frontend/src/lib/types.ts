@@ -79,6 +79,25 @@ export type GraderBreakdown = {
 	[key: string]: unknown;
 };
 
+export type GraderResult = {
+	id: string;
+	grader_name: string;
+	grader_type: string;
+	score: number | null;
+	passed: boolean | null;
+	feedback: string | null;
+	failure_modes: string[];
+	rubric_scores: Record<string, number>;
+	raw_output: Record<string, unknown> | null;
+	error: string | null;
+	created_at: string;
+};
+
+export type GraderError = {
+	grader_name: string;
+	error: string;
+};
+
 export type EvalResult = {
 	id: string;
 	eval_run_id: string;
@@ -96,13 +115,28 @@ export type EvalResult = {
 	grader_feedback: string;
 	failure_modes: string[];
 	grader_breakdown: GraderBreakdown;
+	grader_results: GraderResult[];
 	created_at: string;
 };
 
-export type FailedExample = Omit<EvalResult, "raw_response"> & {
+export type FailedExample = {
+	id: string;
+	eval_run_id: string;
+	test_case_id: string;
 	workflow_type: string;
 	difficulty: string;
 	tags: string[];
-	input: Record<string, unknown>;
-	expected_output: Record<string, unknown>;
+	input_json: Record<string, unknown>;
+	expected_output_json: Record<string, unknown>;
+	model_output: string | null;
+	final_score: number;
+	passed: boolean;
+	deterministic_grader_scores: Record<string, number>;
+	llm_judge_score: number | null;
+	judge_reason: string | null;
+	failure_modes: string[];
+	rubric_scores: Record<string, number>;
+	grader_errors: GraderError[];
+	grader_results: GraderResult[];
+	created_at: string;
 };

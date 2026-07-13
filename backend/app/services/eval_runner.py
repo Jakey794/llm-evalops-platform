@@ -2,12 +2,15 @@ import json
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
+from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.graders import CompositeGrader, GraderInput, GraderResult
+from app.config import get_settings
+from app.graders import CompositeGrader, GraderInput, GraderResult, get_rubric
 from app.models import (
     Dataset,
     EvalResult,
@@ -18,12 +21,21 @@ from app.models import (
     PromptVersion,
     TestCase,
 )
+from app.models.grader_result import GraderResult as GraderResultModel
 from app.services.cost_tracker import estimate_cost_usd
+from app.services.judge_provider import JudgeProviderResult, judge_output
 from app.services.metrics import calculate_run_metrics
 from app.services.prompt_renderer import render_prompt
 from app.services.providers import LLMProvider, LLMRequest, LLMResponse, OpenAIProvider
 
 ProviderFactory = Callable[[ModelConfig], LLMProvider]
+JudgeFunction = Callable[..., JudgeProviderResult]
+
+COMPOSITE_SCORE_WEIGHTS: dict[str, tuple[float, float]] = {
+    "support_classification": (0.7, 0.3),
+    "incident_triage": (0.4, 0.6),
+}
+FALLBACK_COMPOSITE_WEIGHTS = (0.5, 0.5)
 
 
 class EvalRunnerError(RuntimeError):
@@ -55,9 +67,15 @@ class EvalRunner:
         self,
         session: Session,
         provider_factory: ProviderFactory = default_provider_factory,
+        judge_function: JudgeFunction = judge_output,
+        judge_enabled: bool | None = None,
     ) -> None:
         self._session = session
         self._provider_factory = provider_factory
+        self._judge_function = judge_function
+        self._judge_enabled = (
+            get_settings().llm_judge_enabled if judge_enabled is None else judge_enabled
+        )
 
     def run(
         self,
@@ -176,8 +194,8 @@ class EvalRunner:
                 f"{dataset.workflow_type!r} != {prompt_version.workflow_type!r}"
             )
 
-    @staticmethod
     def _process_case(
+        self,
         *,
         eval_run: EvalRun,
         test_case: TestCase,
@@ -217,19 +235,20 @@ class EvalRunner:
         if parsed_output is None:
             parsed_output = _parse_json(response.text)
         grader_config = _resolve_grader_config(test_case)
-        grader_result = CompositeGrader().grade(
+        model_output_for_grading = (
+            response.text
+            if response.text is not None
+            else parsed_output
+            if isinstance(parsed_output, dict)
+            else None
+        )
+        deterministic_result = CompositeGrader().grade(
             GraderInput(
                 test_case_id=str(test_case.id),
                 workflow_type=test_case.workflow_type,
                 input_data=test_case.input_json,
                 expected_output=test_case.expected_output_json,
-                model_output=(
-                    response.text
-                    if response.text is not None
-                    else parsed_output
-                    if isinstance(parsed_output, dict)
-                    else None
-                ),
+                model_output=model_output_for_grading,
                 parsed_output=parsed_output if isinstance(parsed_output, dict) else None,
                 grader_config=grader_config,
                 tags=test_case.tags,
@@ -237,9 +256,14 @@ class EvalRunner:
             )
         )
         if response.error is not None:
-            grader_result = _provider_error_result(grader_result, response.error)
+            deterministic_result = _provider_error_result(deterministic_result, response.error)
 
-        return EvalResult(
+        primary_cost = estimate_cost_usd(
+            response.model_name,
+            response.input_tokens,
+            response.output_tokens,
+        )
+        eval_result = EvalResult(
             eval_run_id=eval_run.id,
             test_case_id=test_case.id,
             model_output=response.text,
@@ -248,18 +272,62 @@ class EvalRunner:
             latency_ms=response.latency_ms,
             input_tokens=response.input_tokens,
             output_tokens=response.output_tokens,
-            estimated_cost_usd=estimate_cost_usd(
-                response.model_name,
-                response.input_tokens,
-                response.output_tokens,
-            ),
+            estimated_cost_usd=primary_cost,
             error=response.error,
-            score=grader_result.score,
-            passed=grader_result.passed,
-            grader_feedback=grader_result.feedback,
-            failure_modes=grader_result.failure_modes,
-            grader_breakdown=grader_result.metadata,
+            score=deterministic_result.score,
+            passed=deterministic_result.passed,
+            grader_feedback=deterministic_result.feedback,
+            failure_modes=deterministic_result.failure_modes,
+            grader_breakdown=deterministic_result.metadata,
         )
+        eval_result.grader_results.extend(_deterministic_grader_rows(deterministic_result))
+
+        if _judge_is_enabled(grader_config, default=self._judge_enabled):
+            judge_result = self._evaluate_with_judge(
+                workflow_type=test_case.workflow_type,
+                input_json=test_case.input_json,
+                expected_output_json=test_case.expected_output_json,
+                model_output=model_output_for_grading,
+                deterministic_result=deterministic_result,
+            )
+            eval_result.grader_results.append(_judge_grader_row(judge_result))
+            _apply_judge_result(
+                eval_result=eval_result,
+                deterministic_result=deterministic_result,
+                judge_result=judge_result,
+                workflow_type=test_case.workflow_type,
+            )
+            judge_cost = _judge_cost(judge_result)
+            eval_result.estimated_cost_usd = _combine_costs(primary_cost, judge_cost)
+
+        return eval_result
+
+    def _evaluate_with_judge(
+        self,
+        *,
+        workflow_type: str,
+        input_json: dict[str, Any],
+        expected_output_json: dict[str, Any],
+        model_output: Any,
+        deterministic_result: GraderResult,
+    ) -> JudgeProviderResult:
+        try:
+            return self._judge_function(
+                workflow_type=workflow_type,
+                input_json=input_json,
+                expected_output_json=expected_output_json,
+                model_output=model_output,
+                deterministic_summary=deterministic_result.model_dump(mode="json"),
+            )
+        except Exception as exc:
+            return JudgeProviderResult(
+                judge_output=None,
+                usage=None,
+                latency_ms=0,
+                model_name=get_settings().llm_judge_model,
+                raw_output=None,
+                error=f"LLM judge integration error: {type(exc).__name__}: {exc}",
+            )
 
     def _mark_failed(self, run_id: uuid.UUID) -> None:
         self._session.rollback()
@@ -319,6 +387,146 @@ def _json_type_name(value: object) -> str:
     if isinstance(value, list):
         return "array"
     return "object"
+
+
+def _judge_is_enabled(grader_config: dict[str, object], *, default: bool) -> bool:
+    direct_setting = grader_config.get("llm_judge_enabled")
+    if isinstance(direct_setting, bool):
+        return direct_setting
+
+    judge_config = grader_config.get("llm_judge")
+    if isinstance(judge_config, bool):
+        return judge_config
+    if isinstance(judge_config, dict):
+        configured = judge_config.get("enabled")
+        if isinstance(configured, bool):
+            return configured
+    return default
+
+
+def _deterministic_grader_rows(result: GraderResult) -> list[GraderResultModel]:
+    raw_components = result.metadata.get("grader_results")
+    if not isinstance(raw_components, list):
+        return []
+
+    rows: list[GraderResultModel] = []
+    for raw_component in raw_components:
+        component = GraderResult.model_validate(raw_component)
+        rows.append(
+            GraderResultModel(
+                grader_name=component.grader_name,
+                grader_type="deterministic",
+                score=component.score,
+                passed=component.passed,
+                feedback=component.feedback,
+                failure_modes=component.failure_modes,
+                rubric_scores={},
+                raw_output=component.metadata,
+                error=None,
+            )
+        )
+    return rows
+
+
+def _judge_grader_row(result: JudgeProviderResult) -> GraderResultModel:
+    output = result.judge_output
+    judge_cost = _judge_cost(result)
+    provider_metadata: dict[str, Any] = {
+        "model_name": result.model_name,
+        "latency_ms": result.latency_ms,
+        "usage": result.usage.model_dump(mode="json") if result.usage is not None else None,
+        "estimated_cost_usd": str(judge_cost) if judge_cost is not None else None,
+        "response": result.raw_output,
+    }
+    return GraderResultModel(
+        grader_name="llm_judge",
+        grader_type="llm",
+        score=output.score if output is not None else None,
+        passed=output.passed if output is not None else None,
+        feedback=output.reason if output is not None else None,
+        failure_modes=output.failure_modes if output is not None else [],
+        rubric_scores=output.rubric_scores if output is not None else {},
+        raw_output=provider_metadata,
+        error=result.error,
+    )
+
+
+def _apply_judge_result(
+    *,
+    eval_result: EvalResult,
+    deterministic_result: GraderResult,
+    judge_result: JudgeProviderResult,
+    workflow_type: str,
+) -> None:
+    judge_output = judge_result.judge_output
+    metadata = dict(deterministic_result.metadata)
+
+    if judge_result.error is not None or judge_output is None:
+        metadata["llm_judge"] = {
+            "error": judge_result.error or "Judge output was unavailable",
+            "latency_ms": judge_result.latency_ms,
+            "model_name": judge_result.model_name,
+        }
+        eval_result.grader_feedback = (
+            f"{deterministic_result.feedback} "
+            f"LLM judge error: {judge_result.error or 'Judge output was unavailable'}."
+        )
+        eval_result.grader_breakdown = metadata
+        return
+
+    deterministic_weight, judge_weight = COMPOSITE_SCORE_WEIGHTS.get(
+        workflow_type,
+        FALLBACK_COMPOSITE_WEIGHTS,
+    )
+    final_score = max(
+        0.0,
+        min(
+            1.0,
+            deterministic_result.score * deterministic_weight + judge_output.score * judge_weight,
+        ),
+    )
+    pass_threshold = get_rubric(workflow_type).pass_threshold
+    breakdown = metadata.get("breakdown")
+    metadata["breakdown"] = {
+        **(breakdown if isinstance(breakdown, dict) else {}),
+        "llm_judge": judge_output.score,
+    }
+    metadata["llm_judge"] = judge_output.model_dump(mode="json")
+    metadata["composite"] = {
+        "deterministic_score": deterministic_result.score,
+        "deterministic_weight": deterministic_weight,
+        "llm_judge_score": judge_output.score,
+        "llm_judge_weight": judge_weight,
+        "pass_threshold": pass_threshold,
+        "score": final_score,
+    }
+
+    eval_result.score = final_score
+    eval_result.passed = final_score >= pass_threshold
+    eval_result.grader_feedback = (
+        f"Composite score {final_score:.3f} with pass threshold {pass_threshold:.3f}. "
+        f"Deterministic score {deterministic_result.score:.3f}. "
+        f"LLM judge: {judge_output.reason}"
+    )
+    eval_result.failure_modes = list(
+        dict.fromkeys([*deterministic_result.failure_modes, *judge_output.failure_modes])
+    )
+    eval_result.grader_breakdown = metadata
+
+
+def _judge_cost(result: JudgeProviderResult) -> Decimal | None:
+    if result.usage is None:
+        return None
+    return estimate_cost_usd(
+        result.model_name,
+        result.usage.input_tokens,
+        result.usage.output_tokens,
+    )
+
+
+def _combine_costs(primary: Decimal | None, judge: Decimal | None) -> Decimal | None:
+    costs = [cost for cost in (primary, judge) if cost is not None]
+    return sum(costs, start=Decimal("0")) if costs else None
 
 
 def _provider_error_result(result: GraderResult, error: str) -> GraderResult:

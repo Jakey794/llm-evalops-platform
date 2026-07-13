@@ -5,14 +5,22 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api.routes.eval_runs import get_provider_factory
 from app.db import get_db
 from app.main import create_app
-from app.models import Base, Dataset, EvalRun, ModelConfig, PromptVersion
+from app.models import (
+    Base,
+    Dataset,
+    EvalResult,
+    EvalRun,
+    GraderResult,
+    ModelConfig,
+    PromptVersion,
+)
 from app.models import TestCase as CaseModel
 from app.services.providers import LLMRequest, LLMResponse
 
@@ -148,6 +156,29 @@ def test_post_runs_eval_synchronously_and_returns_completed_summary(api: ApiCont
 
 def test_results_and_failed_examples_are_frontend_friendly(api: ApiContext) -> None:
     run_id = api.client.post("/eval-runs", json=api.request_body).json()["id"]
+    with api.session_factory() as db:
+        failed_result = db.scalar(
+            select(EvalResult).where(
+                EvalResult.eval_run_id == uuid.UUID(run_id),
+                EvalResult.error.is_not(None),
+            )
+        )
+        assert failed_result is not None
+        db.add(
+            GraderResult(
+                eval_result_id=failed_result.id,
+                grader_name="llm_judge",
+                grader_type="llm",
+                score=0.2,
+                passed=False,
+                feedback="The response did not classify the request.",
+                failure_modes=["incorrect_label"],
+                rubric_scores={"category_accuracy": 0.2},
+                raw_output={"model_name": "gemini-2.5-flash-lite"},
+                error=None,
+            )
+        )
+        db.commit()
 
     results_response = api.client.get(f"/eval-runs/{run_id}/results")
     failed_response = api.client.get(f"/eval-runs/{run_id}/failed-examples")
@@ -162,6 +193,18 @@ def test_results_and_failed_examples_are_frontend_friendly(api: ApiContext) -> N
     assert all("grader_feedback" in result for result in results)
     assert all("failure_modes" in result for result in results)
     assert all("grader_breakdown" in result for result in results)
+    assert all("grader_results" in result for result in results)
+    assert all(
+        {grader["grader_name"] for grader in result["grader_results"]}
+        >= {"exact_match", "json_schema"}
+        for result in results
+    )
+    failed_result_payload = next(result for result in results if result["error"] is not None)
+    assert {grader["grader_name"] for grader in failed_result_payload["grader_results"]} == {
+        "exact_match",
+        "json_schema",
+        "llm_judge",
+    }
 
     assert failed_response.status_code == 200
     failed_examples = failed_response.json()
@@ -171,20 +214,27 @@ def test_results_and_failed_examples_are_frontend_friendly(api: ApiContext) -> N
     assert failed["workflow_type"] == "support_classification"
     assert failed["difficulty"] == "hard"
     assert failed["tags"] == []
-    assert failed["input"] == {"ticket": "provider-error"}
-    assert failed["expected_output"] == {"ok": True}
+    assert failed["input_json"] == {"ticket": "provider-error"}
+    assert failed["expected_output_json"] == {"ok": True}
     assert failed["model_output"] is None
-    assert failed["parsed_output"] is None
-    assert failed["score"] == 0.0
+    assert failed["final_score"] == 0.0
     assert failed["passed"] is False
-    assert "Provider error: fake provider failure" in failed["grader_feedback"]
     assert "provider_error" in failed["failure_modes"]
-    assert failed["grader_breakdown"]["breakdown"] == {
+    assert failed["deterministic_grader_scores"] == {
         "json_schema": 0.0,
         "exact_match": 0.0,
     }
-    assert failed["grader_breakdown"]["provider_error"] == "fake provider failure"
-    assert failed["error"] == "fake provider failure"
+    assert failed["llm_judge_score"] == 0.2
+    assert failed["judge_reason"] == "The response did not classify the request."
+    assert failed["rubric_scores"] == {"category_accuracy": 0.2}
+    assert failed["grader_errors"] == [
+        {"grader_name": "model_provider", "error": "fake provider failure"}
+    ]
+    assert {grader["grader_name"] for grader in failed["grader_results"]} == {
+        "exact_match",
+        "json_schema",
+        "llm_judge",
+    }
     assert "raw_response" not in failed
 
 
@@ -216,6 +266,43 @@ def test_list_and_detail_return_runs_newest_first(api: ApiContext) -> None:
     assert [row["id"] for row in list_response.json()] == [newer_id, older_id]
     assert detail_response.status_code == 200
     assert detail_response.json()["id"] == older_id
+
+
+def test_failed_examples_include_passing_result_with_judge_error(api: ApiContext) -> None:
+    run_id = api.client.post("/eval-runs", json=api.request_body).json()["id"]
+    with api.session_factory() as db:
+        passing_result = db.scalar(
+            select(EvalResult).where(
+                EvalResult.eval_run_id == uuid.UUID(run_id),
+                EvalResult.passed.is_(True),
+            )
+        )
+        assert passing_result is not None
+        db.add(
+            GraderResult(
+                eval_result_id=passing_result.id,
+                grader_name="llm_judge",
+                grader_type="llm",
+                score=None,
+                passed=None,
+                feedback=None,
+                failure_modes=[],
+                rubric_scores={},
+                raw_output={"latency_ms": 30_000},
+                error="Gemini judge request timed out",
+            )
+        )
+        db.commit()
+
+    response = api.client.get(f"/eval-runs/{run_id}/failed-examples")
+
+    assert response.status_code == 200
+    passing_example = next(example for example in response.json() if example["passed"] is True)
+    assert passing_example["final_score"] == 1.0
+    assert passing_example["llm_judge_score"] is None
+    assert passing_example["grader_errors"] == [
+        {"grader_name": "llm_judge", "error": "Gemini judge request timed out"}
+    ]
 
 
 def test_missing_resources_and_runs_return_404(api: ApiContext) -> None:

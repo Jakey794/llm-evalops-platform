@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import type { FailedExample } from "@/lib/types";
 
 export function FailedExampleTable({
@@ -10,6 +10,7 @@ export function FailedExampleTable({
 }) {
 	const [difficulty, setDifficulty] = useState("all");
 	const [failureMode, setFailureMode] = useState("all");
+	const [expandedId, setExpandedId] = useState<string | null>(null);
 	const difficulties = [
 		...new Set(examples.map((example) => example.difficulty)),
 	].sort();
@@ -61,23 +62,70 @@ export function FailedExampleTable({
 				</div>
 			) : (
 				<div className="overflow-x-auto rounded-lg border border-slate-800 bg-slate-950 shadow-sm shadow-black/20">
-					<table className="min-w-[1400px] divide-y divide-slate-800 text-left text-sm">
+					<table className="min-w-[1050px] divide-y divide-slate-800 text-left text-sm">
 						<thead className="bg-slate-900/60 text-xs uppercase tracking-wide text-slate-500">
 							<tr>
 								<Header>Test case</Header>
 								<Header>Workflow</Header>
 								<Header>Difficulty</Header>
-								<Header>Score</Header>
-								<Header>Failed grader / mode</Header>
-								<Header>Feedback</Header>
-								<Header>Expected</Header>
-								<Header>Actual</Header>
+								<Header>Final score</Header>
+								<Header>Judge score</Header>
+								<Header>Failure modes</Header>
+								<Header>Details</Header>
 							</tr>
 						</thead>
 						<tbody className="divide-y divide-slate-800">
-							{filteredExamples.map((example) => (
-								<FailedExampleRow example={example} key={example.id} />
-							))}
+							{filteredExamples.map((example) => {
+								const expanded = expandedId === example.id;
+								const detailId = `failed-example-${example.id}`;
+								return (
+									<Fragment key={example.id}>
+										<tr className="align-top hover:bg-slate-900/50">
+											<td className="px-4 py-4">
+												<code
+													className="block max-w-40 truncate text-xs text-slate-400"
+													title={example.test_case_id}
+												>
+													{example.test_case_id}
+												</code>
+											</td>
+											<td className="whitespace-nowrap px-4 py-4 text-xs text-slate-400">
+												{formatLabel(example.workflow_type)}
+											</td>
+											<td className="px-4 py-4">
+												<span className={difficultyClass(example.difficulty)}>
+													{example.difficulty}
+												</span>
+											</td>
+											<ScoreCell value={example.final_score} />
+											<ScoreCell value={example.llm_judge_score} />
+											<td className="max-w-80 px-4 py-4">
+												<FailureModeBadges modes={example.failure_modes} />
+											</td>
+											<td className="px-4 py-4">
+												<button
+													aria-controls={detailId}
+													aria-expanded={expanded}
+													className="text-xs font-medium text-cyan-400 hover:text-cyan-300"
+													onClick={() =>
+														setExpandedId(expanded ? null : example.id)
+													}
+													type="button"
+												>
+													{expanded ? "Hide details" : "View details"}
+												</button>
+											</td>
+										</tr>
+										{expanded ? (
+											<tr id={detailId}>
+												<td className="bg-slate-900/40 p-5" colSpan={7}>
+													<FailedExampleDetail example={example} />
+												</td>
+											</tr>
+										) : null}
+									</Fragment>
+								);
+							})}
 						</tbody>
 					</table>
 				</div>
@@ -86,72 +134,141 @@ export function FailedExampleTable({
 	);
 }
 
-function FailedExampleRow({ example }: { example: FailedExample }) {
-	const failedGraders = (example.grader_breakdown.grader_results ?? [])
-		.filter((result) => !result.passed)
-		.map((result) => result.grader_name);
-	const failureLabel = [...failedGraders, ...example.failure_modes].join(", ");
-
+function FailedExampleDetail({ example }: { example: FailedExample }) {
 	return (
-		<tr className="align-top hover:bg-slate-900/50">
-			<td className="px-4 py-4">
-				<code
-					className="block max-w-40 truncate text-xs text-slate-400"
-					title={example.test_case_id}
-				>
-					{example.test_case_id}
-				</code>
-			</td>
-			<td className="whitespace-nowrap px-4 py-4 text-xs text-slate-400">
-				{formatLabel(example.workflow_type)}
-			</td>
-			<td className="px-4 py-4">
-				<span className={difficultyClass(example.difficulty)}>
-					{example.difficulty}
-				</span>
-			</td>
-			<td className="whitespace-nowrap px-4 py-4 font-mono text-xs text-rose-300">
-				{example.score.toFixed(3)}
-			</td>
-			<td className="max-w-64 px-4 py-4 text-xs text-rose-300">
-				{failureLabel || "Failed composite threshold"}
-			</td>
-			<td className="max-w-sm px-4 py-4 text-xs text-slate-300">
-				{example.grader_feedback ? (
-					<details>
-						<summary className="cursor-pointer leading-5">
-							{truncate(example.grader_feedback, 110)}
-						</summary>
-						<Breakdown example={example} />
-					</details>
-				) : (
-					<span className="text-slate-600">No grader feedback available</span>
-				)}
-			</td>
-			<JsonCell value={example.expected_output} />
-			<JsonCell value={example.parsed_output ?? example.model_output} />
-		</tr>
+		<div className="space-y-5">
+			<div className="grid gap-4 lg:grid-cols-3">
+				<JsonPanel label="Input" value={example.input_json} />
+				<JsonPanel
+					label="Expected output"
+					value={example.expected_output_json}
+				/>
+				<JsonPanel label="Model output" value={example.model_output} />
+			</div>
+			<div className="grid gap-4 lg:grid-cols-3">
+				<ScoreBreakdown example={example} />
+				<div className="rounded-md border border-slate-800 bg-slate-950 p-4">
+					<h4 className="text-xs font-medium uppercase tracking-wide text-slate-500">
+						Judge reason
+					</h4>
+					<p className="mt-3 text-sm leading-6 text-slate-300">
+						{example.judge_reason ?? "No judge reason available."}
+					</p>
+				</div>
+				<RubricScores scores={example.rubric_scores} />
+			</div>
+			{example.grader_errors.length > 0 ? (
+				<div className="rounded-md border border-rose-900/60 bg-rose-950/20 p-4">
+					<h4 className="text-xs font-medium uppercase tracking-wide text-rose-300">
+						Grader errors
+					</h4>
+					<ul className="mt-3 space-y-2 text-sm text-rose-200">
+						{example.grader_errors.map((error) => (
+							<li key={`${error.grader_name}-${error.error}`}>
+								<span className="font-medium">
+									{formatLabel(error.grader_name)}:
+								</span>{" "}
+								{error.error}
+							</li>
+						))}
+					</ul>
+				</div>
+			) : null}
+		</div>
 	);
 }
 
-function Breakdown({ example }: { example: FailedExample }) {
-	const scores = example.grader_breakdown.breakdown ?? {};
+function ScoreBreakdown({ example }: { example: FailedExample }) {
 	return (
-		<div className="mt-3 space-y-3 border-l border-slate-700 pl-3 text-slate-400">
-			<p className="whitespace-pre-wrap leading-5">{example.grader_feedback}</p>
-			<p>
-				Failure modes: {example.failure_modes.join(", ") || "None recorded"}
-			</p>
-			{Object.keys(scores).length > 0 ? (
-				<ul className="space-y-1 font-mono">
-					{Object.entries(scores).map(([name, score]) => (
-						<li key={name}>
-							{name}: {score.toFixed(3)}
-						</li>
-					))}
-				</ul>
-			) : null}
+		<div className="rounded-md border border-slate-800 bg-slate-950 p-4">
+			<h4 className="text-xs font-medium uppercase tracking-wide text-slate-500">
+				Score breakdown
+			</h4>
+			<dl className="mt-3 space-y-2 font-mono text-xs text-slate-300">
+				<div className="flex justify-between gap-4">
+					<dt>Final</dt>
+					<dd>{formatScore(example.final_score)}</dd>
+				</div>
+				<div className="flex justify-between gap-4">
+					<dt>LLM judge</dt>
+					<dd>{formatScore(example.llm_judge_score)}</dd>
+				</div>
+				{Object.entries(example.deterministic_grader_scores).map(
+					([name, score]) => (
+						<div className="flex justify-between gap-4" key={name}>
+							<dt>{formatLabel(name)}</dt>
+							<dd>{formatScore(score)}</dd>
+						</div>
+					),
+				)}
+			</dl>
 		</div>
+	);
+}
+
+function RubricScores({ scores }: { scores: Record<string, number> }) {
+	const entries = Object.entries(scores);
+	return (
+		<div className="rounded-md border border-slate-800 bg-slate-950 p-4">
+			<h4 className="text-xs font-medium uppercase tracking-wide text-slate-500">
+				Rubric scores
+			</h4>
+			{entries.length > 0 ? (
+				<dl className="mt-3 space-y-2 font-mono text-xs text-slate-300">
+					{entries.map(([name, score]) => (
+						<div className="flex justify-between gap-4" key={name}>
+							<dt>{formatLabel(name)}</dt>
+							<dd>{formatScore(score)}</dd>
+						</div>
+					))}
+				</dl>
+			) : (
+				<p className="mt-3 text-sm text-slate-500">
+					No rubric scores recorded.
+				</p>
+			)}
+		</div>
+	);
+}
+
+function FailureModeBadges({ modes }: { modes: string[] }) {
+	if (modes.length === 0) {
+		return <span className="text-xs text-slate-600">None</span>;
+	}
+	return (
+		<div className="flex flex-wrap gap-1.5">
+			{modes.map((mode) => (
+				<span
+					className="rounded-full bg-rose-950 px-2 py-0.5 text-xs text-rose-300"
+					key={mode}
+				>
+					{formatLabel(mode)}
+				</span>
+			))}
+		</div>
+	);
+}
+
+function JsonPanel({ label, value }: { label: string; value: unknown }) {
+	const serialized =
+		typeof value === "string" ? value : JSON.stringify(value, null, 2);
+	return (
+		<div className="min-w-0 rounded-md border border-slate-800 bg-slate-950 p-4">
+			<h4 className="text-xs font-medium uppercase tracking-wide text-slate-500">
+				{label}
+			</h4>
+			<pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-5 text-slate-300">
+				{serialized ?? "—"}
+			</pre>
+		</div>
+	);
+}
+
+function ScoreCell({ value }: { value: number | null }) {
+	return (
+		<td className="whitespace-nowrap px-4 py-4 font-mono text-xs text-slate-300">
+			{formatScore(value)}
+		</td>
 	);
 }
 
@@ -193,17 +310,6 @@ function Header({ children }: { children: React.ReactNode }) {
 	);
 }
 
-function JsonCell({ value }: { value: unknown }) {
-	const serialized = typeof value === "string" ? value : JSON.stringify(value);
-	return (
-		<td className="max-w-80 px-4 py-4 font-mono text-xs leading-5 text-slate-400">
-			<span className="line-clamp-4 break-words" title={serialized}>
-				{serialized ?? "—"}
-			</span>
-		</td>
-	);
-}
-
 function difficultyClass(difficulty: string): string {
 	const color =
 		difficulty === "easy"
@@ -218,6 +324,6 @@ function formatLabel(value: string): string {
 	return value.replaceAll("_", " ");
 }
 
-function truncate(value: string, length: number): string {
-	return value.length > length ? `${value.slice(0, length - 1)}…` : value;
+function formatScore(value: number | null): string {
+	return value === null ? "—" : value.toFixed(3);
 }

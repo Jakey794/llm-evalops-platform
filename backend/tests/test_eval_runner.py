@@ -16,16 +16,19 @@ from app.models import (
     EvalResult,
     EvalRun,
     EvalRunStatus,
+    GraderResult,
     ModelConfig,
     PromptVersion,
 )
 from app.models import TestCase as CaseModel
+from app.schemas import LLMJudgeOutput
 from app.services.eval_runner import (
     EvalResourceNotFoundError,
     EvalRunner,
     EvalRunSetupError,
     default_provider_factory,
 )
+from app.services.judge_provider import JudgeProviderResult, JudgeUsage
 from app.services.providers import LLMRequest, LLMResponse
 
 
@@ -144,6 +147,56 @@ def stored_results(db: Session, run_id: uuid.UUID) -> list[EvalResult]:
             .order_by(CaseModel.created_at, CaseModel.id)
         )
     )
+
+
+def make_judge_result(
+    *,
+    score: float | None = None,
+    passed: bool | None = None,
+    error: str | None = None,
+) -> JudgeProviderResult:
+    output = (
+        LLMJudgeOutput(
+            score=score,
+            passed=bool(passed),
+            reason="Judge assessment.",
+            failure_modes=[] if passed else ["incorrect_label"],
+            rubric_scores={"correctness": score},
+        )
+        if score is not None
+        else None
+    )
+    return JudgeProviderResult(
+        judge_output=output,
+        usage=JudgeUsage(input_tokens=20, output_tokens=8, total_tokens=28),
+        latency_ms=40,
+        model_name="gemini-2.5-flash-lite",
+        raw_output={"response_id": "judge-1"},
+        error=error,
+    )
+
+
+def all_grader_config() -> dict[str, Any]:
+    return {
+        "json_schema": {
+            "required_fields": ["category"],
+            "field_types": {"category": "string"},
+        },
+        "exact_match": {"exact_fields": ["category"]},
+        "text_similarity": {
+            "expected_field": "category",
+            "actual_field": "category",
+        },
+        "composite": {
+            "graders": [
+                {"name": "json_schema", "weight": 1},
+                {"name": "exact_match", "weight": 1},
+                {"name": "text_similarity", "weight": 1},
+            ],
+            "pass_threshold": 0.8,
+        },
+        "llm_judge": {"enabled": True},
+    }
 
 
 def test_successful_run_creates_ordered_result_rows_and_requests(db: Session) -> None:
@@ -375,6 +428,145 @@ def test_explicit_test_case_grader_config_takes_precedence(db: Session) -> None:
     assert result.score == 0.0
     assert result.passed is True
     assert result.grader_breakdown["breakdown"] == {"exact_match": 0.0}
+
+
+def test_deterministic_pass_and_judge_fail_uses_support_weights_and_persists_graders(
+    db: Session,
+) -> None:
+    dataset, prompt, model_config, _ = seed_configuration(
+        db,
+        case_inputs=[{"ticket": "Billing question"}],
+        grader_config=all_grader_config(),
+    )
+    provider = FakeProvider(
+        [make_response('{"category":"billing"}', parsed_json={"category": "billing"})]
+    )
+    judge_function = Mock(return_value=make_judge_result(score=0.0, passed=False))
+
+    eval_run = EvalRunner(
+        db,
+        provider_factory=lambda _: provider,
+        judge_function=judge_function,
+    ).run(dataset.id, prompt.id, model_config.id)
+    result = stored_results(db, eval_run.id)[0]
+    grader_rows = list(
+        db.scalars(select(GraderResult).where(GraderResult.eval_result_id == result.id))
+    )
+
+    assert result.score == pytest.approx(0.7)
+    assert result.passed is False
+    assert result.grader_breakdown["composite"] == {
+        "deterministic_score": 1.0,
+        "deterministic_weight": 0.7,
+        "llm_judge_score": 0.0,
+        "llm_judge_weight": 0.3,
+        "pass_threshold": 0.8,
+        "score": 0.7,
+    }
+    assert {row.grader_name for row in grader_rows} == {
+        "exact_match",
+        "json_schema",
+        "llm_judge",
+        "text_similarity",
+    }
+    assert all(row.eval_result_id == result.id for row in grader_rows)
+    assert {row.grader_type for row in grader_rows if row.grader_name != "llm_judge"} == {
+        "deterministic"
+    }
+    judge_row = next(row for row in grader_rows if row.grader_name == "llm_judge")
+    assert judge_row.grader_type == "llm"
+    assert judge_row.score == 0.0
+    assert judge_row.raw_output["latency_ms"] == 40
+    assert judge_row.raw_output["usage"] == {
+        "input_tokens": 20,
+        "output_tokens": 8,
+        "total_tokens": 28,
+    }
+    judge_function.assert_called_once()
+
+
+def test_deterministic_fail_and_judge_pass_does_not_blindly_pass_incident(db: Session) -> None:
+    grader_config = {
+        "exact_match": {"exact_fields": ["category"]},
+        "composite": {
+            "graders": [{"name": "exact_match", "weight": 1}],
+            "pass_threshold": 1.0,
+        },
+        "llm_judge": {"enabled": True},
+    }
+    dataset, prompt, model_config, _ = seed_configuration(
+        db,
+        workflow_type="incident_triage",
+        case_inputs=[{"ticket": "Incident"}],
+        grader_config=grader_config,
+    )
+    provider = FakeProvider(
+        [
+            make_response(
+                '{"category":"technical_support"}',
+                parsed_json={"category": "technical_support"},
+            )
+        ]
+    )
+    judge_function = Mock(return_value=make_judge_result(score=1.0, passed=True))
+
+    eval_run = EvalRunner(
+        db,
+        provider_factory=lambda _: provider,
+        judge_function=judge_function,
+    ).run(dataset.id, prompt.id, model_config.id)
+    result = stored_results(db, eval_run.id)[0]
+
+    assert result.score == pytest.approx(0.6)
+    assert result.passed is False
+    assert result.grader_breakdown["composite"]["deterministic_weight"] == 0.4
+    assert result.grader_breakdown["composite"]["llm_judge_weight"] == 0.6
+
+
+def test_judge_provider_error_is_persisted_and_deterministic_result_survives(
+    db: Session,
+) -> None:
+    dataset, prompt, model_config, _ = seed_configuration(
+        db,
+        case_inputs=[{"ticket": "Billing question"}],
+        grader_config={
+            "exact_match": {"exact_fields": ["category"]},
+            "composite": {
+                "graders": [{"name": "exact_match", "weight": 1}],
+                "pass_threshold": 1.0,
+            },
+            "llm_judge": {"enabled": True},
+        },
+    )
+    provider = FakeProvider(
+        [make_response('{"category":"billing"}', parsed_json={"category": "billing"})]
+    )
+    judge_function = Mock(
+        return_value=make_judge_result(error="Gemini judge provider error: unavailable")
+    )
+
+    eval_run = EvalRunner(
+        db,
+        provider_factory=lambda _: provider,
+        judge_function=judge_function,
+    ).run(dataset.id, prompt.id, model_config.id)
+    result = stored_results(db, eval_run.id)[0]
+    judge_row = db.scalar(
+        select(GraderResult).where(
+            GraderResult.eval_result_id == result.id,
+            GraderResult.grader_name == "llm_judge",
+        )
+    )
+
+    assert eval_run.status == EvalRunStatus.COMPLETED.value
+    assert eval_run.error_count == 0
+    assert result.score == 1.0
+    assert result.passed is True
+    assert judge_row is not None
+    assert judge_row.score is None
+    assert judge_row.passed is None
+    assert judge_row.error == "Gemini judge provider error: unavailable"
+    assert result.grader_breakdown["llm_judge"]["error"] == judge_row.error
 
 
 @pytest.mark.parametrize(

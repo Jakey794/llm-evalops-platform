@@ -1,0 +1,12 @@
+{
+  "score": 0.9,
+  "passed": true,
+  "reason": "The category and routing match the expected support classification.",
+  "failure_modes": [],
+  "rubric_scores": {
+    "category_accuracy": 1.0,
+    "priority_accuracy": 0.8,
+    "routing_accuracy": 1.0,
+    "classification_relevance": 0.8
+  }
+}

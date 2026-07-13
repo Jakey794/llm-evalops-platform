@@ -10,6 +10,8 @@ from app.schemas.eval_results import (
     EvalResultListItem,
     EvalResultResponse,
     FailedExampleResponse,
+    GraderErrorResponse,
+    GraderResultResponse,
 )
 from app.schemas.eval_runs import EvalRunCreate, EvalRunListItem, EvalRunResponse
 from app.schemas.llm_judge import LLMJudgeOutput
@@ -31,6 +33,8 @@ __all__ = [
     "EvalResultListItem",
     "EvalResultResponse",
     "FailedExampleResponse",
+    "GraderErrorResponse",
+    "GraderResultResponse",
     "EvalRunCreate",
     "EvalRunListItem",
     "EvalRunResponse",

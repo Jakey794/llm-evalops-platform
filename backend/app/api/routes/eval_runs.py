@@ -6,11 +6,12 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.db import get_db
-from app.models import EvalResult, EvalRun
+from app.models import EvalResult, EvalRun, GraderResult
 from app.schemas.eval_results import (
-    EvalResultListItem,
     EvalResultResponse,
     FailedExampleResponse,
+    GraderErrorResponse,
+    GraderResultResponse,
 )
 from app.schemas.eval_runs import EvalRunCreate, EvalRunListItem, EvalRunResponse
 from app.services.eval_runner import (
@@ -82,6 +83,7 @@ def list_eval_run_results(run_id: uuid.UUID, db: DbSession) -> list[EvalResult]:
     return list(
         db.scalars(
             select(EvalResult)
+            .options(selectinload(EvalResult.grader_results))
             .where(EvalResult.eval_run_id == run_id)
             .order_by(EvalResult.created_at, EvalResult.id)
         )
@@ -94,10 +96,17 @@ def list_failed_examples(run_id: uuid.UUID, db: DbSession) -> list[FailedExample
     results = list(
         db.scalars(
             select(EvalResult)
-            .options(selectinload(EvalResult.test_case))
+            .options(
+                selectinload(EvalResult.test_case),
+                selectinload(EvalResult.grader_results),
+            )
             .where(
                 EvalResult.eval_run_id == run_id,
-                or_(EvalResult.passed.is_(False), EvalResult.error.is_not(None)),
+                or_(
+                    EvalResult.passed.is_(False),
+                    EvalResult.error.is_not(None),
+                    EvalResult.grader_results.any(GraderResult.error.is_not(None)),
+                ),
             )
             .order_by(EvalResult.created_at, EvalResult.id)
         )
@@ -114,12 +123,45 @@ def _get_run_or_404(db: Session, run_id: uuid.UUID) -> EvalRun:
 
 def _to_failed_example(result: EvalResult) -> FailedExampleResponse:
     test_case = result.test_case
-    result_fields = EvalResultListItem.model_validate(result).model_dump()
+    grader_results = list(result.grader_results)
+    deterministic_scores = {
+        grader.grader_name: grader.score
+        for grader in grader_results
+        if grader.grader_type == "deterministic" and grader.score is not None
+    }
+    judge_result = next(
+        (grader for grader in grader_results if grader.grader_name == "llm_judge"),
+        None,
+    )
+    grader_errors = [
+        GraderErrorResponse(grader_name=grader.grader_name, error=grader.error)
+        for grader in grader_results
+        if grader.error is not None
+    ]
+    if result.error is not None:
+        grader_errors.insert(
+            0,
+            GraderErrorResponse(grader_name="model_provider", error=result.error),
+        )
+
     return FailedExampleResponse(
-        **result_fields,
+        id=result.id,
+        eval_run_id=result.eval_run_id,
+        test_case_id=result.test_case_id,
         workflow_type=test_case.workflow_type,
         difficulty=test_case.difficulty,
         tags=test_case.tags,
-        input=test_case.input_json,
-        expected_output=test_case.expected_output_json,
+        input_json=test_case.input_json,
+        expected_output_json=test_case.expected_output_json,
+        model_output=result.model_output,
+        final_score=result.score,
+        passed=result.passed,
+        deterministic_grader_scores=deterministic_scores,
+        llm_judge_score=judge_result.score if judge_result is not None else None,
+        judge_reason=judge_result.feedback if judge_result is not None else None,
+        failure_modes=result.failure_modes,
+        rubric_scores=judge_result.rubric_scores if judge_result is not None else {},
+        grader_errors=grader_errors,
+        grader_results=[GraderResultResponse.model_validate(grader) for grader in grader_results],
+        created_at=result.created_at,
     )

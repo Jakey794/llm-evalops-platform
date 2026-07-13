@@ -47,13 +47,49 @@ class EvalResultListItem(BaseModel):
     created_at: datetime
 
 
+class GraderResultResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    grader_name: str
+    grader_type: str
+    score: float | None
+    passed: bool | None
+    feedback: str | None
+    failure_modes: list[str]
+    rubric_scores: dict[str, float]
+    raw_output: dict[str, Any] | None
+    error: str | None
+    created_at: datetime
+
+
 class EvalResultResponse(EvalResultListItem):
     raw_response: dict[str, Any] | None
+    grader_results: list[GraderResultResponse] = Field(default_factory=list)
 
 
-class FailedExampleResponse(EvalResultListItem):
+class GraderErrorResponse(BaseModel):
+    grader_name: str
+    error: str
+
+
+class FailedExampleResponse(BaseModel):
+    id: uuid.UUID
+    eval_run_id: uuid.UUID
+    test_case_id: uuid.UUID
     workflow_type: str
     difficulty: str
     tags: list[str]
-    input: dict[str, Any]
-    expected_output: dict[str, Any]
+    input_json: dict[str, Any]
+    expected_output_json: dict[str, Any]
+    model_output: str | None
+    final_score: float
+    passed: bool
+    deterministic_grader_scores: dict[str, float]
+    llm_judge_score: float | None
+    judge_reason: str | None
+    failure_modes: list[str]
+    rubric_scores: dict[str, float]
+    grader_errors: list[GraderErrorResponse]
+    grader_results: list[GraderResultResponse]
+    created_at: datetime

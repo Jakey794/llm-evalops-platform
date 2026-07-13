@@ -14,6 +14,12 @@ from app.services.jsonl_importer import (
     JsonlTestCase,
     parse_jsonl_test_cases,
 )
+from app.services.judge_provider import (
+    JudgeProviderResult,
+    JudgeUsage,
+    judge_output,
+    judge_output_with_gemini,
+)
 from app.services.metrics import EvalRunMetrics, calculate_run_metrics
 from app.services.prompt_renderer import (
     MissingPromptVariableError,
@@ -31,6 +37,8 @@ __all__ = [
     "JsonlImportError",
     "JsonlImportResult",
     "JsonlTestCase",
+    "JudgeProviderResult",
+    "JudgeUsage",
     "MODEL_PRICING",
     "MissingPromptVariableError",
     "ModelPricing",
@@ -39,6 +47,8 @@ __all__ = [
     "default_provider_factory",
     "calculate_run_metrics",
     "estimate_cost_usd",
+    "judge_output",
+    "judge_output_with_gemini",
     "parse_jsonl_test_cases",
     "render_prompt",
 ]

@@ -45,7 +45,7 @@ export default async function RunDetailPage({
 						value={formatPassRate(run.pass_rate)}
 					/>
 					<MetricCard
-						helperText="Mean deterministic grader score"
+						helperText="Mean final score after configured grader weighting"
 						label="Average score"
 						value={formatScore(run.avg_score)}
 					/>
@@ -70,8 +70,8 @@ export default async function RunDetailPage({
 				<div className="mb-3">
 					<h3 className="text-lg font-semibold text-white">Failed examples</h3>
 					<p className="mt-1 text-sm text-slate-500">
-						Inspect deterministic grader failures and expected versus actual
-						outputs.
+						Inspect model inputs, deterministic scores, judge feedback, and
+						rubric details.
 					</p>
 				</div>
 				<FailedExampleTable examples={failedExamples} />
@@ -82,6 +82,7 @@ export default async function RunDetailPage({
 					<h3 className="text-lg font-semibold text-white">Case results</h3>
 					<p className="mt-1 text-sm text-slate-500">
 						{results.length} {results.length === 1 ? "result" : "results"}
+						with expandable grader details
 					</p>
 				</div>
 				<ResultTable results={results} />
