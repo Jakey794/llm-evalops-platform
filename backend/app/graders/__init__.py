@@ -1,4 +1,5 @@
 from app.graders.base import BaseGrader, GraderInput, GraderResult, clamp_score
+from app.graders.citation import CitationGrader
 from app.graders.composite import GRADER_REGISTRY, CompositeGrader
 from app.graders.exact_match import ExactMatchGrader
 from app.graders.json_schema import JsonSchemaGrader
@@ -16,6 +17,7 @@ from app.graders.text_similarity import TextSimilarityGrader
 __all__ = [
     "BaseGrader",
     "build_llm_judge_prompt",
+    "CitationGrader",
     "CompositeGrader",
     "ExactMatchGrader",
     "GRADER_REGISTRY",

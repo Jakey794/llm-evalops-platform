@@ -66,8 +66,13 @@ def test_prompt_requires_structured_output_and_allowed_failure_modes() -> None:
     assert all(failure_mode in prompt for failure_mode in ALLOWED_FAILURE_MODES)
 
 
-def test_rag_rubric_is_a_placeholder_without_citation_checking() -> None:
+def test_rag_rubric_describes_grounding_and_defers_citations() -> None:
     rag_rubric = get_rubric("rag_qa")
 
-    assert "Citation checking is not implemented" in rag_rubric.description
-    assert "do not assess citation presence" in rag_rubric.description
+    assert "grounding" in rag_rubric.description.lower()
+    assert "missing_citation" in rag_rubric.description
+    assert "invalid_citation" in rag_rubric.description
+    assert {criterion.name for criterion in rag_rubric.criteria} >= {
+        "answer_correctness",
+        "claim_support",
+    }

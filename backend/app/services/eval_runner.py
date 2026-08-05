@@ -26,7 +26,13 @@ from app.services.cost_tracker import estimate_cost_usd
 from app.services.judge_provider import JudgeProviderResult, judge_output
 from app.services.metrics import calculate_run_metrics
 from app.services.prompt_renderer import render_prompt
-from app.services.providers import LLMProvider, LLMRequest, LLMResponse, OpenAIProvider
+from app.services.providers import (
+    GeminiProvider,
+    LLMProvider,
+    LLMRequest,
+    LLMResponse,
+    OpenAIProvider,
+)
 
 ProviderFactory = Callable[[ModelConfig], LLMProvider]
 JudgeFunction = Callable[..., JudgeProviderResult]
@@ -34,6 +40,7 @@ JudgeFunction = Callable[..., JudgeProviderResult]
 COMPOSITE_SCORE_WEIGHTS: dict[str, tuple[float, float]] = {
     "support_classification": (0.7, 0.3),
     "incident_triage": (0.4, 0.6),
+    "rag_qa": (0.6, 0.4),
 }
 FALLBACK_COMPOSITE_WEIGHTS = (0.5, 0.5)
 
@@ -59,6 +66,8 @@ class EvalRunSetupError(EvalRunnerError):
 def default_provider_factory(model_config: ModelConfig) -> LLMProvider:
     if model_config.provider == ModelProvider.OPENAI.value:
         return OpenAIProvider()
+    if model_config.provider == ModelProvider.GEMINI.value:
+        return GeminiProvider()
     raise ValueError(f"Unsupported model provider: {model_config.provider}")
 
 
@@ -359,18 +368,29 @@ def _parse_json(value: str | None) -> dict[str, object] | list[object] | None:
 def _resolve_grader_config(test_case: TestCase) -> dict[str, object]:
     configured = test_case.metadata_json.get("grader_config")
     if isinstance(configured, dict) and configured:
-        return configured
+        config = dict(configured)
+    else:
+        expected = test_case.expected_output_json
+        exact_fields = list(expected)
+        config = {
+            "json_schema": {
+                "required_fields": exact_fields,
+                "field_types": {field: _json_type_name(value) for field, value in expected.items()},
+                "allow_extra_fields": False,
+            },
+            "exact_match": {"exact_fields": exact_fields},
+        }
 
-    expected = test_case.expected_output_json
-    exact_fields = list(expected)
-    return {
-        "json_schema": {
-            "required_fields": exact_fields,
-            "field_types": {field: _json_type_name(value) for field, value in expected.items()},
-            "allow_extra_fields": False,
-        },
-        "exact_match": {"exact_fields": exact_fields},
-    }
+    if test_case.required_citations:
+        citation_config = config.get("citation")
+        if not isinstance(citation_config, dict):
+            citation_config = {}
+        else:
+            citation_config = dict(citation_config)
+        citation_config.setdefault("required_citations", list(test_case.required_citations))
+        config["citation"] = citation_config
+        config["required_citations"] = list(test_case.required_citations)
+    return config
 
 
 def _json_type_name(value: object) -> str:

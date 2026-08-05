@@ -2,6 +2,7 @@ import math
 from typing import Any
 
 from app.graders.base import BaseGrader, GraderInput, GraderResult, clamp_score
+from app.graders.citation import CitationGrader
 from app.graders.exact_match import ExactMatchGrader
 from app.graders.json_schema import JsonSchemaGrader
 from app.graders.text_similarity import TextSimilarityGrader
@@ -10,6 +11,7 @@ GRADER_REGISTRY: dict[str, type[BaseGrader]] = {
     "exact_match": ExactMatchGrader,
     "json_schema": JsonSchemaGrader,
     "text_similarity": TextSimilarityGrader,
+    "citation": CitationGrader,
 }
 
 
@@ -132,6 +134,11 @@ def _infer_default_graders(input: GraderInput) -> list[str]:
     )
     if has_answer_contains or has_expected_field or has_expected_text or has_expected_phrases:
         inferred.append("text_similarity")
+
+    citation_config = grader_config.get("citation")
+    has_explicit_citation = isinstance(citation_config, dict)
+    if input.workflow_type == "rag_qa" or has_explicit_citation:
+        inferred.append("citation")
 
     return inferred
 

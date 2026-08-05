@@ -78,14 +78,14 @@ SUPPORT_CLASSIFICATION_RUBRIC = JudgeRubric(
 RAG_QA_RUBRIC = JudgeRubric(
     workflow_type="rag_qa",
     description=(
-        "Evaluate answer quality against the supplied input and expected output. "
-        "Citation checking is not implemented; do not assess citation presence or emit "
-        "missing_citation."
+        "Evaluate answer quality and grounding against the supplied documents and "
+        "expected output. Deterministic citation grading remains authoritative for "
+        "missing_citation and invalid_citation."
     ),
     criteria=(
         RubricCriterion(
             "answer_correctness",
-            "The answer agrees with the expected output and supplied context.",
+            "The answer agrees with the expected output and supplied documents.",
         ),
         RubricCriterion(
             "answer_completeness",
@@ -97,7 +97,7 @@ RAG_QA_RUBRIC = JudgeRubric(
         ),
         RubricCriterion(
             "claim_support",
-            "Claims are supported by the supplied input and expected output.",
+            "Claims are supported by the cited documents and expected output.",
         ),
     ),
 )
