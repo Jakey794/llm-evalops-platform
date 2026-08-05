@@ -27,7 +27,7 @@ Open the README architecture diagram. Say:
 - FastAPI eval runner
 - PostgreSQL persistence
 - Deterministic graders + optional Gemini judge
-- CI eval gate with mocked providers on PRs
+- CI eval gate with seeded Postgres + deterministic mock providers on PRs
 
 ## 2. Datasets (60s)
 
@@ -38,25 +38,22 @@ Open `/datasets`.
 
 ## 3. Run an evaluation (90s)
 
-Create a run via API (terminal):
+Open `/runs/new` (also linked from Dashboard and Runs).
 
-```bash
-# Replace IDs from GET /datasets, prompt-versions, or seed output.
-curl -s http://localhost:8000/prompt-versions | jq '.[0]'
-curl --fail-with-body -X POST http://localhost:8000/eval-runs \
-  -H 'Content-Type: application/json' \
-  -d '{"dataset_id":"...","prompt_version_id":"...","model_config_id":"..."}'
-```
+1. Select **Support Classification Seed** (or RAG QA Seed for the citation story).
+2. Confirm the prompt list only shows workflow-compatible versions (baseline / degraded).
+3. Choose `gemini-3.1-flash-lite` (or another seeded model with a configured key).
+4. Click **Start evaluation** and wait for the synchronous run to finish.
+5. Land on `/runs/{id}` and show:
+   - Pass rate, average score, cost, avg/p95 latency
+   - Failed examples + grader feedback
+   - Tag / difficulty / workflow breakdowns
 
-Open `/runs`, click into the new run, and show:
-
-- Pass rate, average score, cost, avg/p95 latency
-- Failed examples + grader feedback
-- Tag / difficulty / workflow breakdowns
+If you need a second run for Compare, launch the matching degraded prompt from the same page.
 
 ## 4. Compare prompts (60s)
 
-Open `/compare`, select baseline vs another completed run, and show cost-quality and latency-quality charts.
+Open `/compare`, select baseline vs degraded completed runs, and show cost-quality and latency-quality charts.
 
 ## 5. CI eval gate (60s)
 
@@ -67,16 +64,18 @@ uv run python -m app.cli.eval_gate \
   --prompt-name support_classification_baseline \
   --model-name gemini-3.1-flash-lite \
   --min-pass-rate 0.9 \
+  --min-avg-score 0.85 \
   --max-cost-usd 1.0 \
   --max-p95-latency-ms 5000 \
   --mock \
+  --mock-profile expected \
   --report-path /tmp/eval-gate-report.json
 echo $?
 jq . /tmp/eval-gate-report.json
 ```
 
-Mention GitHub Actions `eval-gate.yml` runs mocked tests only—no real API calls on normal PRs.
+Mention GitHub Actions `eval-gate.yml` starts Postgres, seeds data, runs the real CLI with `--mock`, uploads JSON reports, and also proves the degraded mock profile returns exit code `1`—without calling Gemini or OpenAI on normal PRs.
 
 ## 6. Closing (30s)
 
-Restate the portfolio value: reproducible evals, regression detection, cost/latency visibility, and a CI gate that can block degraded prompt versions.
+Restate the portfolio value: reproducible evals, dashboard-launched runs, regression detection, cost/latency visibility, and a CI gate that can block degraded prompt or model behavior.

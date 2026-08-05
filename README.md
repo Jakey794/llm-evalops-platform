@@ -32,7 +32,8 @@ Providers (optional at runtime, mocked in CI):
 - Deterministic graders: exact match, JSON schema, text similarity, citation/grounding
 - Optional Gemini LLM-as-judge with composite scoring
 - Dashboard analytics: run history, failed examples, breakdowns, cost/latency-quality charts
-- CI eval gate CLI with thresholds, stable exit codes, and JSON reports
+- Dashboard **New evaluation** launcher (`/runs/new`) for dataset/prompt/model selection
+- CI eval gate CLI with thresholds, stable exit codes, JSON reports, and seeded GitHub Actions Postgres
 - RAG QA workflow using supplied documents (no vector database)
 - Cloud Run + Vercel deployment packaging and portfolio docs
 
@@ -78,10 +79,30 @@ uv run python -m app.cli.eval_gate \
   --max-cost-usd 1.0 \
   --max-p95-latency-ms 5000 \
   --mock \
+  --mock-profile expected \
   --report-path /tmp/eval-gate-report.json
 ```
 
+Prove the threshold-failure path without live APIs:
+
+```bash
+uv run python -m app.cli.eval_gate \
+  --dataset-name "Support Classification Seed" \
+  --prompt-name support_classification_baseline \
+  --model-name gemini-3.1-flash-lite \
+  --min-pass-rate 0.9 \
+  --min-avg-score 0.85 \
+  --max-cost-usd 1.0 \
+  --max-p95-latency-ms 5000 \
+  --mock \
+  --mock-profile degraded \
+  --report-path /tmp/eval-gate-regression.json
+echo $?   # expected: 1
+```
+
 Exit codes: `0` pass, `1` threshold failure, `2` config error, `3` runtime error.
+
+GitHub Actions workflow `.github/workflows/eval-gate.yml` starts Postgres, migrates, seeds, runs the real CLI, uploads JSON report artifacts, and asserts the degraded profile exits `1`.
 
 ### Judge configuration
 
@@ -109,6 +130,11 @@ npm run build
 ```
 
 Open `http://localhost:3000` for the dashboard.
+
+- `/runs/new` — launch a synchronous evaluation (datasets, prompt versions, model configs)
+- `/runs` — run history
+- `/compare` — multi-run cost/latency vs quality
+- API helpers: `GET /datasets`, `GET /prompt-versions`, `GET /model-configs`, `POST /eval-runs`
 
 ## Documentation
 
