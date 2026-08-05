@@ -7,6 +7,11 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.db import get_db
 from app.models import EvalResult, EvalRun, GraderResult
+from app.schemas.analytics import (
+    CompareRunsResponse,
+    DashboardOverviewResponse,
+    RunAnalyticsResponse,
+)
 from app.schemas.eval_results import (
     EvalResultResponse,
     FailedExampleResponse,
@@ -14,6 +19,11 @@ from app.schemas.eval_results import (
     GraderResultResponse,
 )
 from app.schemas.eval_runs import EvalRunCreate, EvalRunListItem, EvalRunResponse
+from app.services.analytics import (
+    build_compare_response,
+    build_dashboard_overview,
+    build_run_analytics,
+)
 from app.services.eval_runner import (
     EvalResourceNotFoundError,
     EvalRunner,
@@ -53,7 +63,7 @@ def create_eval_run(
         if exc.run_id is not None:
             failed_run = db.get(EvalRun, exc.run_id)
             if failed_run is not None:
-                return failed_run
+                return _load_run(db, failed_run.id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Eval run setup failed",
@@ -67,14 +77,52 @@ def list_eval_runs(
 ) -> list[EvalRun]:
     return list(
         db.scalars(
-            select(EvalRun).order_by(EvalRun.created_at.desc(), EvalRun.id.desc()).limit(limit)
+            select(EvalRun)
+            .options(
+                selectinload(EvalRun.dataset),
+                selectinload(EvalRun.prompt_version),
+                selectinload(EvalRun.model_config),
+            )
+            .order_by(EvalRun.created_at.desc(), EvalRun.id.desc())
+            .limit(limit)
         )
     )
+
+
+@router.get("/overview", response_model=DashboardOverviewResponse)
+def get_dashboard_overview(
+    db: DbSession,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> DashboardOverviewResponse:
+    return build_dashboard_overview(db, limit=limit)
+
+
+@router.get("/compare", response_model=CompareRunsResponse)
+def compare_eval_runs(
+    db: DbSession,
+    run_ids: Annotated[list[uuid.UUID], Query(min_length=1, max_length=10)],
+) -> CompareRunsResponse:
+    response = build_compare_response(db, run_ids)
+    if len(response.runs) != len(set(run_ids)):
+        missing = sorted(
+            {str(run_id) for run_id in run_ids} - {str(run.id) for run in response.runs}
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Eval run not found: {', '.join(missing)}",
+        )
+    return response
 
 
 @router.get("/{run_id}", response_model=EvalRunResponse)
 def get_eval_run(run_id: uuid.UUID, db: DbSession) -> EvalRun:
     return _get_run_or_404(db, run_id)
+
+
+@router.get("/{run_id}/analytics", response_model=RunAnalyticsResponse)
+def get_eval_run_analytics(run_id: uuid.UUID, db: DbSession) -> RunAnalyticsResponse:
+    _get_run_or_404(db, run_id)
+    return build_run_analytics(db, run_id)
 
 
 @router.get("/{run_id}/results", response_model=list[EvalResultResponse])
@@ -115,7 +163,19 @@ def list_failed_examples(run_id: uuid.UUID, db: DbSession) -> list[FailedExample
 
 
 def _get_run_or_404(db: Session, run_id: uuid.UUID) -> EvalRun:
-    eval_run = db.get(EvalRun, run_id)
+    return _load_run(db, run_id)
+
+
+def _load_run(db: Session, run_id: uuid.UUID) -> EvalRun:
+    eval_run = db.scalars(
+        select(EvalRun)
+        .options(
+            selectinload(EvalRun.dataset),
+            selectinload(EvalRun.prompt_version),
+            selectinload(EvalRun.model_config),
+        )
+        .where(EvalRun.id == run_id)
+    ).first()
     if eval_run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Eval run not found")
     return eval_run

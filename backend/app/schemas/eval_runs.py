@@ -36,6 +36,10 @@ class EvalRunListItem(BaseModel):
     error_count: int
     failed_count: int
     total_count: int
+    model_name: str | None = None
+    dataset_name: str | None = None
+    prompt_name: str | None = None
+    prompt_version_label: str | None = None
 
 
 class EvalRunResponse(EvalRunListItem):

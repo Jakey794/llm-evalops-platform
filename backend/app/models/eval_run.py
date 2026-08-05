@@ -71,3 +71,19 @@ class EvalRun(Base):
     @property
     def total_count(self) -> int:
         return self.total_cases
+
+    @property
+    def model_name(self) -> str | None:
+        return self.model_config.model_name if self.model_config is not None else None
+
+    @property
+    def dataset_name(self) -> str | None:
+        return self.dataset.name if self.dataset is not None else None
+
+    @property
+    def prompt_name(self) -> str | None:
+        return self.prompt_version.name if self.prompt_version is not None else None
+
+    @property
+    def prompt_version_label(self) -> str | None:
+        return self.prompt_version.version_label if self.prompt_version is not None else None

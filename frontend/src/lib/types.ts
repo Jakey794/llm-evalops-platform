@@ -46,6 +46,9 @@ export type EvalRun = {
 	prompt_version_id: string;
 	model_config_id: string;
 	model_name?: string | null;
+	dataset_name?: string | null;
+	prompt_name?: string | null;
+	prompt_version_label?: string | null;
 	status: EvalRunStatus;
 	created_at: string;
 	started_at: string | null;
@@ -60,6 +63,71 @@ export type EvalRun = {
 	error_count: number;
 	failed_count: number;
 	total_count: number;
+};
+
+export type BreakdownBucket = {
+	key: string;
+	total_count: number;
+	passed_count: number;
+	failed_count: number;
+	pass_rate: number | null;
+	avg_score: number | null;
+	avg_latency_ms: number | null;
+	total_cost_usd: number;
+};
+
+export type RunAnalytics = {
+	eval_run_id: string;
+	by_tag: BreakdownBucket[];
+	by_difficulty: BreakdownBucket[];
+	by_workflow: BreakdownBucket[];
+	incomplete_cases: number;
+	has_partial_metrics: boolean;
+};
+
+export type CompareRunPoint = {
+	id: string;
+	label: string;
+	status: string;
+	dataset_name: string | null;
+	prompt_name: string | null;
+	prompt_version_label: string | null;
+	model_name: string | null;
+	pass_rate: number | null;
+	avg_score: number | null;
+	total_cost_usd: number;
+	avg_latency_ms: number | null;
+	p95_latency_ms: number | null;
+	failed_count: number;
+	total_count: number;
+};
+
+export type CompareRunsResponse = {
+	runs: CompareRunPoint[];
+	cost_quality: Array<{
+		id: string;
+		label: string;
+		cost: number | null;
+		quality: number | null;
+	}>;
+	latency_quality: Array<{
+		id: string;
+		label: string;
+		latency: number | null;
+		quality: number | null;
+	}>;
+};
+
+export type DashboardOverview = {
+	run_count: number;
+	completed_run_count: number;
+	pass_rate: number | null;
+	avg_score: number | null;
+	total_cost_usd: number;
+	avg_latency_ms: number | null;
+	p95_latency_ms: number | null;
+	has_partial_metrics: boolean;
+	recent_runs: CompareRunPoint[];
 };
 
 export type ComponentGraderResult = {

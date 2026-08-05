@@ -41,8 +41,16 @@ export function RunTable({ runs }: { runs: EvalRun[] }) {
 								</Link>
 								<StatusBadge status={run.status} />
 							</td>
-							<IdCell value={run.dataset_id} />
 							<td className="px-4 py-4">
+								<p className="max-w-44 truncate text-sm text-slate-200">
+									{run.dataset_name ?? "Dataset"}
+								</p>
+								<Identifier value={run.dataset_id} />
+							</td>
+							<td className="px-4 py-4">
+								<p className="max-w-44 truncate text-sm text-slate-200">
+									{run.prompt_name ?? "Prompt"}
+								</p>
 								<Identifier value={run.prompt_version_id} />
 								<p className="mt-2 max-w-44 truncate text-xs text-slate-400">
 									{run.model_name ?? "—"}
@@ -132,14 +140,6 @@ function Header({ children }: { children: React.ReactNode }) {
 		<th className="px-4 py-3 font-medium" scope="col">
 			{children}
 		</th>
-	);
-}
-
-function IdCell({ value }: { value: string }) {
-	return (
-		<td className="px-4 py-4">
-			<Identifier value={value} />
-		</td>
 	);
 }
 

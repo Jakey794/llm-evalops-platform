@@ -1,10 +1,13 @@
 import type {
+	CompareRunsResponse,
+	DashboardOverview,
 	DatasetDetail,
 	DatasetSummary,
 	EvalResult,
 	EvalRun,
 	FailedExample,
 	HealthResponse,
+	RunAnalytics,
 	TestCase,
 } from "@/lib/types";
 
@@ -35,8 +38,20 @@ export async function getEvalRuns(): Promise<EvalRun[]> {
 	return fetchApi<EvalRun[]>("/eval-runs");
 }
 
+export async function getDashboardOverview(): Promise<DashboardOverview> {
+	return fetchApi<DashboardOverview>("/eval-runs/overview");
+}
+
 export async function getEvalRun(runId: string): Promise<EvalRun> {
 	return fetchApi<EvalRun>(`/eval-runs/${encodeURIComponent(runId)}`);
+}
+
+export async function getEvalRunAnalytics(
+	runId: string,
+): Promise<RunAnalytics> {
+	return fetchApi<RunAnalytics>(
+		`/eval-runs/${encodeURIComponent(runId)}/analytics`,
+	);
 }
 
 export async function getEvalRunResults(runId: string): Promise<EvalResult[]> {
@@ -51,6 +66,16 @@ export async function getFailedExamples(
 	return fetchApi<FailedExample[]>(
 		`/eval-runs/${encodeURIComponent(runId)}/failed-examples`,
 	);
+}
+
+export async function compareEvalRuns(
+	runIds: string[],
+): Promise<CompareRunsResponse> {
+	const params = new URLSearchParams();
+	for (const runId of runIds) {
+		params.append("run_ids", runId);
+	}
+	return fetchApi<CompareRunsResponse>(`/eval-runs/compare?${params}`);
 }
 
 async function fetchApi<T>(path: string): Promise<T> {
