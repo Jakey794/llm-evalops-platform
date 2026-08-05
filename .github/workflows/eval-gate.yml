@@ -1,0 +1,45 @@
+name: Eval Gate CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  eval-gate-mocked:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Run mocked eval-gate tests
+        env:
+          EVAL_GATE_MOCK: "1"
+          LLM_JUDGE_ENABLED: "false"
+          OPENAI_API_KEY: ""
+          GEMINI_API_KEY: ""
+        run: uv run pytest tests/test_eval_gate.py tests/test_citation_grader.py -q
+
+      - name: Verify eval-gate CLI help
+        run: uv run python -m app.cli.eval_gate --help

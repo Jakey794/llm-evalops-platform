@@ -22,6 +22,9 @@ dev = [
     "ruff>=0.6.0",
 ]
 
+[project.scripts]
+eval-gate = "app.cli.eval_gate:main"
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
