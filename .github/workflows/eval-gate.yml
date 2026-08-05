@@ -16,6 +16,28 @@ jobs:
       run:
         working-directory: backend
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: evalops
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d evalops"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/evalops
+      EVAL_GATE_MOCK: "1"
+      LLM_JUDGE_ENABLED: "false"
+      OPENAI_API_KEY: ""
+      GEMINI_API_KEY: ""
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -33,13 +55,69 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --extra dev
 
-      - name: Run mocked eval-gate tests
-        env:
-          EVAL_GATE_MOCK: "1"
-          LLM_JUDGE_ENABLED: "false"
-          OPENAI_API_KEY: ""
-          GEMINI_API_KEY: ""
-        run: uv run pytest tests/test_eval_gate.py tests/test_citation_grader.py -q
+      - name: Apply database migrations
+        run: uv run alembic upgrade head
 
-      - name: Verify eval-gate CLI help
-        run: uv run python -m app.cli.eval_gate --help
+      - name: Load seed datasets, prompts, and models
+        run: uv run python -m app.seed.load_seed_data
+
+      - name: Run baseline deterministic eval gate
+        run: |
+          uv run python -m app.cli.eval_gate \
+            --dataset-name "Support Classification Seed" \
+            --prompt-name support_classification_baseline \
+            --prompt-version-label v1 \
+            --model-name gemini-3.1-flash-lite \
+            --min-pass-rate 0.9 \
+            --min-avg-score 0.85 \
+            --max-cost-usd 1.0 \
+            --max-p95-latency-ms 5000 \
+            --mock \
+            --mock-profile expected \
+            --report-path eval-gate-baseline-report.json
+
+      - name: Prove degraded mock profile fails thresholds
+        run: |
+          set +e
+          uv run python -m app.cli.eval_gate \
+            --dataset-name "Support Classification Seed" \
+            --prompt-name support_classification_baseline \
+            --prompt-version-label v1 \
+            --model-name gemini-3.1-flash-lite \
+            --min-pass-rate 0.9 \
+            --min-avg-score 0.85 \
+            --max-cost-usd 1.0 \
+            --max-p95-latency-ms 5000 \
+            --mock \
+            --mock-profile degraded \
+            --report-path eval-gate-regression-report.json
+          code=$?
+          set -e
+          if [ "$code" -ne 1 ]; then
+            echo "Expected exit code 1 (threshold failure), got $code" >&2
+            exit 1
+          fi
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path("eval-gate-regression-report.json").read_text(encoding="utf-8"))
+          assert report["passed"] is False
+          assert report["exit_code"] == 1
+          assert report["violations"], "expected threshold violations"
+          assert report["metrics"], "expected metrics"
+          assert report["dataset_id"]
+          assert report["prompt_version_id"]
+          assert report["model_config_id"]
+          assert report["mock_profile"] == "degraded"
+          print("Regression gate report validated")
+          PY
+
+      - name: Upload eval gate reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-gate-reports
+          path: |
+            backend/eval-gate-baseline-report.json
+            backend/eval-gate-regression-report.json
