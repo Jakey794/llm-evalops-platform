@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base
 
 if TYPE_CHECKING:
+    from app.models.eval_run import EvalRun
     from app.models.test_case import TestCase
 
 
@@ -26,6 +27,11 @@ class Dataset(Base):
     )
 
     test_cases: Mapped[list[TestCase]] = relationship(
+        back_populates="dataset",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    eval_runs: Mapped[list[EvalRun]] = relationship(
         back_populates="dataset",
         cascade="all, delete-orphan",
         passive_deletes=True,
