@@ -51,7 +51,16 @@ class GateReport:
     metrics: dict[str, Any]
     thresholds: dict[str, float | None]
     violations: list[dict[str, Any]]
+    dataset_id: str | None = None
+    prompt_version_id: str | None = None
+    model_config_id: str | None = None
+    mock_profile: str | None = None
     error: str | None = None
+
+
+MOCK_PROFILE_EXPECTED = "expected"
+MOCK_PROFILE_DEGRADED = "degraded"
+MOCK_PROFILES = (MOCK_PROFILE_EXPECTED, MOCK_PROFILE_DEGRADED)
 
 
 class ExpectedOutputMockProvider:
@@ -61,28 +70,26 @@ class ExpectedOutputMockProvider:
         self._session = session
 
     def generate(self, request: LLMRequest) -> LLMResponse:
-        from app.models import TestCase
-
-        test_case_id = (request.metadata or {}).get("test_case_id")
-        test_case = None
-        if isinstance(test_case_id, str):
-            try:
-                test_case = self._session.get(TestCase, uuid.UUID(test_case_id))
-            except ValueError:
-                test_case = None
-
+        test_case = _load_test_case(self._session, request)
         payload = test_case.expected_output_json if test_case is not None else {"ok": True}
-        text = json.dumps(payload)
-        return LLMResponse(
-            text=text,
-            parsed_json=payload if isinstance(payload, dict) else None,
-            latency_ms=12,
-            input_tokens=20,
-            output_tokens=10,
-            model_name=request.model_name,
-            raw_response={"mock": True, "provider": "expected_output"},
-            error=None,
+        return _mock_response(
+            request,
+            payload if isinstance(payload, dict) else {"ok": True},
+            provider="expected_output",
         )
+
+
+class DegradedOutputMockProvider:
+    """Deterministic provider that returns controlled wrong outputs for regression gates."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def generate(self, request: LLMRequest) -> LLMResponse:
+        test_case = _load_test_case(self._session, request)
+        expected = test_case.expected_output_json if test_case is not None else {}
+        payload = _degraded_payload(expected if isinstance(expected, dict) else {})
+        return _mock_response(request, payload, provider="degraded_output", latency_ms=18)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -111,6 +118,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--mock",
         action="store_true",
         help="Use deterministic mock provider (no external API calls).",
+    )
+    parser.add_argument(
+        "--mock-profile",
+        choices=MOCK_PROFILES,
+        default=None,
+        help=(
+            "Mock output profile: 'expected' mirrors expected outputs (pass path); "
+            "'degraded' returns controlled wrong outputs (threshold-failure path). "
+            "Defaults to EVAL_GATE_MOCK_PROFILE or 'expected' when --mock is set."
+        ),
     )
     return parser
 
@@ -199,11 +216,21 @@ def run_gate(
     thresholds: GateThresholds,
     provider_factory: ProviderFactory | None = None,
     mock: bool = False,
+    mock_profile: str | None = None,
 ) -> GateReport:
+    resolved_profile = _resolve_mock_profile(mock=mock, mock_profile=mock_profile)
+    identifiers = {
+        "dataset_id": str(dataset_id),
+        "prompt_version_id": str(prompt_version_id),
+        "model_config_id": str(model_config_id),
+        "mock_profile": resolved_profile,
+    }
     factory = provider_factory
     if factory is None:
-        if mock or _env_flag("EVAL_GATE_MOCK"):
-            factory = _mock_provider_factory(session)
+        if mock or _env_flag("EVAL_GATE_MOCK") or resolved_profile is not None:
+            factory = _mock_provider_factory(
+                session, profile=resolved_profile or MOCK_PROFILE_EXPECTED
+            )
         else:
             factory = default_provider_factory
 
@@ -223,6 +250,7 @@ def run_gate(
             thresholds=asdict(thresholds),
             violations=[],
             error=f"{type(exc).__name__}: {exc}",
+            **identifiers,
         )
 
     violations = evaluate_thresholds(eval_run, thresholds)
@@ -244,6 +272,7 @@ def run_gate(
         },
         thresholds=asdict(thresholds),
         violations=[asdict(item) for item in violations],
+        **identifiers,
     )
 
 
@@ -264,6 +293,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     if all(value is None for value in asdict(thresholds).values()):
         _print_error("At least one threshold flag is required.")
+        return EXIT_CONFIG_ERROR
+
+    try:
+        _resolve_mock_profile(mock=bool(args.mock), mock_profile=args.mock_profile)
+    except ValueError as exc:
+        _print_error(str(exc))
         return EXIT_CONFIG_ERROR
 
     session_factory = get_session_factory()
@@ -302,6 +337,7 @@ def main(argv: list[str] | None = None) -> int:
                 model_config_id=model_id,
                 thresholds=thresholds,
                 mock=bool(args.mock),
+                mock_profile=args.mock_profile,
             )
     except Exception as exc:  # noqa: BLE001
         report = GateReport(
@@ -405,13 +441,89 @@ def _resolve_model(
     raise ValueError("Provide --model-config-id or --model-name")
 
 
-def _mock_provider_factory(session: Session) -> ProviderFactory:
-    provider: LLMProvider = ExpectedOutputMockProvider(session)
+def _mock_provider_factory(session: Session, *, profile: str) -> ProviderFactory:
+    if profile == MOCK_PROFILE_DEGRADED:
+        provider: LLMProvider = DegradedOutputMockProvider(session)
+    elif profile == MOCK_PROFILE_EXPECTED:
+        provider = ExpectedOutputMockProvider(session)
+    else:
+        raise ValueError(f"Unknown mock profile: {profile}")
 
     def factory(_model_config: ModelConfig) -> LLMProvider:
         return provider
 
     return factory
+
+
+def _resolve_mock_profile(*, mock: bool, mock_profile: str | None) -> str | None:
+    if mock_profile is not None:
+        return mock_profile
+    env_profile = os.getenv("EVAL_GATE_MOCK_PROFILE", "").strip().lower()
+    if env_profile:
+        if env_profile not in MOCK_PROFILES:
+            raise ValueError(
+                f"Invalid EVAL_GATE_MOCK_PROFILE={env_profile!r}; "
+                f"expected one of {', '.join(MOCK_PROFILES)}"
+            )
+        return env_profile
+    if mock or _env_flag("EVAL_GATE_MOCK"):
+        return MOCK_PROFILE_EXPECTED
+    return None
+
+
+def _load_test_case(session: Session, request: LLMRequest):
+    from app.models import TestCase
+
+    test_case_id = (request.metadata or {}).get("test_case_id")
+    if not isinstance(test_case_id, str):
+        return None
+    try:
+        return session.get(TestCase, uuid.UUID(test_case_id))
+    except ValueError:
+        return None
+
+
+def _mock_response(
+    request: LLMRequest,
+    payload: dict[str, Any],
+    *,
+    provider: str,
+    latency_ms: int = 12,
+) -> LLMResponse:
+    text = json.dumps(payload)
+    return LLMResponse(
+        text=text,
+        parsed_json=payload,
+        latency_ms=latency_ms,
+        input_tokens=20,
+        output_tokens=10,
+        model_name=request.model_name,
+        raw_response={"mock": True, "provider": provider},
+        error=None,
+    )
+
+
+def _degraded_payload(expected: dict[str, Any]) -> dict[str, Any]:
+    """Build a schema-shaped but intentionally incorrect payload for regression demos."""
+    if "citations" in expected or "answer" in expected:
+        return {
+            "answer": "This is a speculative answer with invented details and no citations.",
+            "citations": [],
+        }
+    if "category" in expected:
+        return {
+            "category": "technical_support",
+            "priority": "low",
+            "routed_team": "general",
+        }
+    if "severity" in expected:
+        return {
+            "severity": "sev-1",
+            "impacted_service": "unknown",
+            "likely_root_cause": "unclear",
+            "summary": "Speculative triage with insufficient evidence.",
+        }
+    return {"degraded": True, "ok": False}
 
 
 def _env_flag(name: str) -> bool:

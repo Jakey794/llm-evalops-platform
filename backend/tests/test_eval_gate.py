@@ -150,6 +150,11 @@ def test_cli_mock_gate_passes_and_writes_report(gate_db) -> None:
     assert payload["passed"] is True
     assert payload["metrics"]["pass_rate"] == 1.0
     assert payload["violations"] == []
+    assert payload["dataset_id"] == ids["dataset_id"]
+    assert payload["prompt_version_id"] == ids["prompt_version_id"]
+    assert payload["model_config_id"] == ids["model_config_id"]
+    assert payload["mock_profile"] == "expected"
+    assert payload["eval_run_id"]
 
 
 def test_cli_threshold_failure_exit_code(gate_db) -> None:
@@ -176,6 +181,41 @@ def test_cli_threshold_failure_exit_code(gate_db) -> None:
     payload = json.loads(report_path.read_text(encoding="utf-8"))
     assert payload["passed"] is False
     assert payload["violations"][0]["metric"] == "p95_latency_ms"
+
+
+def test_cli_degraded_mock_profile_fails_quality_thresholds(gate_db) -> None:
+    _session_factory, ids, tmp_path = gate_db
+    report_path = tmp_path / "degraded.json"
+
+    exit_code = eval_gate.main(
+        [
+            "--dataset-name",
+            ids["dataset_name"],
+            "--prompt-name",
+            ids["prompt_name"],
+            "--model-name",
+            ids["model_name"],
+            "--min-pass-rate",
+            "0.9",
+            "--min-avg-score",
+            "0.85",
+            "--mock",
+            "--mock-profile",
+            "degraded",
+            "--report-path",
+            str(report_path),
+        ]
+    )
+
+    assert exit_code == eval_gate.EXIT_THRESHOLD_FAILURE
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["passed"] is False
+    assert payload["mock_profile"] == "degraded"
+    assert payload["metrics"]["pass_rate"] is not None
+    assert payload["metrics"]["pass_rate"] < 0.9
+    assert any(item["metric"] in {"pass_rate", "avg_score"} for item in payload["violations"])
+    assert payload["dataset_id"] == ids["dataset_id"]
+    assert payload["eval_run_id"]
 
 
 def test_cli_config_error_without_thresholds(tmp_path: Path) -> None:
@@ -205,3 +245,12 @@ def test_cli_config_error_for_missing_dataset(gate_db) -> None:
     assert exit_code == eval_gate.EXIT_CONFIG_ERROR
     payload = json.loads(report_path.read_text(encoding="utf-8"))
     assert "Dataset not found" in payload["error"]
+
+
+def test_degraded_payload_shapes() -> None:
+    assert eval_gate._degraded_payload({"answer": "x", "citations": ["a"]})["citations"] == []
+    assert (
+        eval_gate._degraded_payload({"category": "billing", "priority": "high"})["category"]
+        == "technical_support"
+    )
+    assert eval_gate._degraded_payload({"severity": "sev-3"})["severity"] == "sev-1"
