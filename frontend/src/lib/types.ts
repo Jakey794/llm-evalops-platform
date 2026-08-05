@@ -47,6 +47,22 @@ export type PromptVersion = {
 	template?: string;
 };
 
+export type ModelConfig = {
+	id: string;
+	provider: string;
+	model_name: string;
+	temperature: number | null;
+	max_output_tokens: number;
+	created_at: string;
+	response_format?: Record<string, unknown> | null;
+};
+
+export type EvalRunCreateRequest = {
+	dataset_id: string;
+	prompt_version_id: string;
+	model_config_id: string;
+};
+
 export type EvalRunStatus = "pending" | "running" | "completed" | "failed";
 
 export type EvalRun = {

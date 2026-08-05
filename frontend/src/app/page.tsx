@@ -150,16 +150,24 @@ export default async function DashboardPage() {
 							{runs.length} recent {runs.length === 1 ? "run" : "runs"}
 						</p>
 					</div>
-					<Link
-						className="text-sm text-cyan-400 hover:text-cyan-300"
-						href="/runs"
-					>
-						View all runs
-					</Link>
+					<div className="flex items-center gap-4">
+						<Link
+							className="text-sm text-cyan-400 hover:text-cyan-300"
+							href="/runs/new"
+						>
+							New evaluation
+						</Link>
+						<Link
+							className="text-sm text-cyan-400 hover:text-cyan-300"
+							href="/runs"
+						>
+							View all runs
+						</Link>
+					</div>
 				</div>
 				{runs.length === 0 ? (
 					<EmptyState
-						description="Start an evaluation through the API or CI gate to populate history."
+						description="Launch a run from New evaluation, or use the CI eval gate to populate history."
 						title="No eval runs yet"
 					/>
 				) : (

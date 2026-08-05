@@ -5,6 +5,7 @@ const navItems = [
 	{ href: "/datasets", label: "Datasets" },
 	{ href: "/prompts", label: "Prompts" },
 	{ href: "/runs", label: "Runs" },
+	{ href: "/runs/new", label: "New evaluation" },
 	{ href: "/compare", label: "Compare" },
 ];
 

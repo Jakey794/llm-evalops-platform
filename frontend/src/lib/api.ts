@@ -5,8 +5,10 @@ import type {
 	DatasetSummary,
 	EvalResult,
 	EvalRun,
+	EvalRunCreateRequest,
 	FailedExample,
 	HealthResponse,
+	ModelConfig,
 	PromptVersion,
 	RunAnalytics,
 	TestCase,
@@ -14,6 +16,18 @@ import type {
 
 const API_BASE_URL =
 	process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+
+export class ApiError extends Error {
+	readonly status: number;
+	readonly detail: string;
+
+	constructor(status: number, statusText: string, detail: string) {
+		super(detail || `Request failed (${status} ${statusText})`);
+		this.name = "ApiError";
+		this.status = status;
+		this.detail = detail || statusText;
+	}
+}
 
 export async function getBackendHealth(): Promise<HealthResponse> {
 	return fetchApi<HealthResponse>("/health");
@@ -79,18 +93,41 @@ export async function compareEvalRuns(
 	return fetchApi<CompareRunsResponse>(`/eval-runs/compare?${params}`);
 }
 
+export async function createEvalRun(
+	payload: EvalRunCreateRequest,
+): Promise<EvalRun> {
+	return fetchApi<EvalRun>("/eval-runs", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(payload),
+	});
+}
+
 export async function getPromptVersions(): Promise<PromptVersion[]> {
 	return fetchApi<PromptVersion[]>("/prompt-versions");
 }
 
-async function fetchApi<T>(path: string): Promise<T> {
+export async function getModelConfigs(): Promise<ModelConfig[]> {
+	return fetchApi<ModelConfig[]>("/model-configs");
+}
+
+async function fetchApi<T>(path: string, init?: RequestInit): Promise<T> {
 	const url = `${API_BASE_URL}${path}`;
-	const response = await fetch(url, { cache: "no-store" });
+	const response = await fetch(url, { cache: "no-store", ...init });
 
 	if (!response.ok) {
-		throw new Error(
-			`Request failed (${response.status} ${response.statusText})`,
-		);
+		let detail = "";
+		try {
+			const body = (await response.json()) as { detail?: unknown };
+			if (typeof body.detail === "string") {
+				detail = body.detail;
+			} else if (body.detail != null) {
+				detail = JSON.stringify(body.detail);
+			}
+		} catch {
+			detail = "";
+		}
+		throw new ApiError(response.status, response.statusText, detail);
 	}
 
 	return response.json() as Promise<T>;
