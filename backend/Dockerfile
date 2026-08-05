@@ -16,9 +16,12 @@ RUN pip install uv \
 COPY alembic.ini ./
 COPY alembic ./alembic
 COPY app ./app
+COPY scripts ./scripts
+
+RUN chmod +x scripts/start.sh
 
 USER appuser
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "exec .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port \"${PORT:-8000}\""]
+CMD ["sh", "./scripts/start.sh"]

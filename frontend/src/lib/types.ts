@@ -38,6 +38,15 @@ export type MetricCardProps = {
 	helperText: string;
 };
 
+export type PromptVersion = {
+	id: string;
+	name: string;
+	workflow_type: string;
+	version_label: string;
+	created_at: string;
+	template?: string;
+};
+
 export type EvalRunStatus = "pending" | "running" | "completed" | "failed";
 
 export type EvalRun = {

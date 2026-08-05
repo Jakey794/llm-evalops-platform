@@ -18,6 +18,10 @@ _GPT_4O_MINI_PRICING = ModelPricing(
     input_usd_per_million_tokens=Decimal("0.15"),
     output_usd_per_million_tokens=Decimal("0.60"),
 )
+_GEMINI_FLASH_LITE_PRICING = ModelPricing(
+    input_usd_per_million_tokens=Decimal("0.10"),
+    output_usd_per_million_tokens=Decimal("0.40"),
+)
 
 # Pricing is intentionally static and explicit. Snapshot aliases must be added here rather
 # than inheriting prices by prefix, which prevents future model variants from being mispriced.
@@ -25,6 +29,8 @@ MODEL_PRICING: Final[Mapping[str, ModelPricing]] = MappingProxyType(
     {
         "gpt-4o-mini": _GPT_4O_MINI_PRICING,
         "gpt-4o-mini-2024-07-18": _GPT_4O_MINI_PRICING,
+        "gemini-3.1-flash-lite": _GEMINI_FLASH_LITE_PRICING,
+        "gemini-2.5-flash-lite": _GEMINI_FLASH_LITE_PRICING,
     }
 )
 

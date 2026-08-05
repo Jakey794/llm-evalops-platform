@@ -170,7 +170,7 @@ def make_judge_result(
         judge_output=output,
         usage=JudgeUsage(input_tokens=20, output_tokens=8, total_tokens=28),
         latency_ms=40,
-        model_name="gemini-2.5-flash-lite",
+        model_name="gemini-3.1-flash-lite",
         raw_output={"response_id": "judge-1"},
         error=error,
     )

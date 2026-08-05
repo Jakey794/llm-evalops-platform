@@ -174,7 +174,7 @@ def test_results_and_failed_examples_are_frontend_friendly(api: ApiContext) -> N
                 feedback="The response did not classify the request.",
                 failure_modes=["incorrect_label"],
                 rubric_scores={"category_accuracy": 0.2},
-                raw_output={"model_name": "gemini-2.5-flash-lite"},
+                raw_output={"model_name": "gemini-3.1-flash-lite"},
                 error=None,
             )
         )

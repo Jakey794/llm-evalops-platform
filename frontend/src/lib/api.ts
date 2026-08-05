@@ -7,6 +7,7 @@ import type {
 	EvalRun,
 	FailedExample,
 	HealthResponse,
+	PromptVersion,
 	RunAnalytics,
 	TestCase,
 } from "@/lib/types";
@@ -76,6 +77,10 @@ export async function compareEvalRuns(
 		params.append("run_ids", runId);
 	}
 	return fetchApi<CompareRunsResponse>(`/eval-runs/compare?${params}`);
+}
+
+export async function getPromptVersions(): Promise<PromptVersion[]> {
+	return fetchApi<PromptVersion[]>("/prompt-versions");
 }
 
 async function fetchApi<T>(path: string): Promise<T> {

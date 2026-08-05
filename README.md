@@ -2,93 +2,39 @@
 
 A production-shaped platform for managing and evaluating the reliability of LLM-powered applications.
 
-## Week 2 Status
-
-Week 2 adds dataset management to the application foundation:
-
-- Next.js frontend dashboard shell
-- FastAPI backend with health checks
-- PostgreSQL local development service
-- Backend container image
-- Backend and frontend continuous integration
-- Dataset and test-case schema with Alembic migrations
-- Atomic JSONL dataset imports with per-line validation
-- Dataset list, detail, and test-case APIs
-- Bundled support-classification and incident-triage seed datasets
-- Frontend dataset browser
-
 ## Architecture
 
 ```text
-Next.js frontend -> FastAPI backend -> PostgreSQL
+┌────────────────────┐       ┌──────────────────────────────┐
+│  Next.js dashboard │──────▶│  FastAPI eval API            │
+│  (Vercel)          │       │  (Cloud Run)                 │
+│                    │       │                              │
+│  runs / compare /   │       │  datasets · prompts · runs   │
+│  datasets / prompts│       │  graders · metrics · gate CLI│
+└────────────────────┘       └──────────────┬───────────────┘
+                                            │
+                                            ▼
+                                 ┌──────────────────────┐
+                                 │ PostgreSQL           │
+                                 │ datasets, runs,      │
+                                 │ results, graders     │
+                                 └──────────────────────┘
+
+Providers (optional at runtime, mocked in CI):
+  Gemini generation + LLM judge · OpenAI generation
 ```
 
-## Week 5: LLM-as-judge
+## Capabilities
 
-The eval runner can optionally send model output to Gemini after deterministic grading. Exact
-match, JSON schema, and text similarity remain first-class because they are fast, repeatable, and
-reliable for structural checks; the judge adds semantic assessment without becoming a single
-point of failure. Judge errors are stored in `grader_results`, the run continues, and the
-deterministic result is retained.
-
-Final deterministic/judge weights are 70/30 for support classification, 40/60 for incident
-triage, and 50/50 otherwise. The validated `LLMJudgeOutput` is:
-
-```text
-score: float (0.0-1.0)
-passed: bool
-reason: short user-visible string
-failure_modes: list[string]
-rubric_scores: map[string, float (0.0-1.0)]
-```
-
-Allowed failure modes are `incorrect_label`, `invalid_json`, `missing_required_field`,
-`wrong_severity`, `incomplete_reasoning`, `unsupported_claim`, `missing_citation`,
-`hallucination`, and `irrelevant_answer`. Citation checking for `rag_qa` is not implemented yet.
-See [an example judge result](docs/examples/judge-result.json).
-
-### Local judge configuration
-
-Set these in the ignored root `.env` file:
-
-```dotenv
-LLM_JUDGE_PROVIDER=gemini
-LLM_JUDGE_ENABLED=true
-GEMINI_API_KEY=replace-with-your-key
-LLM_JUDGE_MODEL=gemini-2.5-flash-lite
-LLM_JUDGE_TIMEOUT_SECONDS=30
-```
-
-`OPENAI_API_KEY` is not used by the judge. It is still required when the selected primary
-`ModelConfig` uses the existing OpenAI generation provider.
-
-To run a small existing dataset, start the backend with these settings and submit existing,
-workflow-compatible dataset, prompt-version, and model-config IDs:
-
-```bash
-cd backend
-uv run alembic upgrade head
-uv run uvicorn app.main:app --reload --port 8000
-
-curl --fail-with-body -X POST http://localhost:8000/eval-runs \
-  -H 'Content-Type: application/json' \
-  -d '{"dataset_id":"<dataset-id>","prompt_version_id":"<prompt-version-id>","model_config_id":"<model-config-id>"}'
-```
-
-Inspect `GET /eval-runs/<run-id>/results` or `GET /eval-runs/<run-id>/failed-examples`.
-
-### Week 5 verification
-
-```bash
-cd backend
-uv run pytest
-uv run ruff format --check .
-uv run ruff check .
-
-cd ../frontend
-npm run check
-npm run build
-```
+- Dataset ingestion (JSONL) with validation and seed datasets
+- Prompt/model versioning with baseline and intentionally degraded prompts
+- Synchronous eval runner with cost and latency tracking
+- Deterministic graders: exact match, JSON schema, text similarity, citation/grounding
+- Optional Gemini LLM-as-judge with composite scoring
+- Dashboard analytics: run history, failed examples, breakdowns, cost/latency-quality charts
+- CI eval gate CLI with thresholds, stable exit codes, and JSON reports
+- RAG QA workflow using supplied documents (no vector database)
+- Cloud Run + Vercel deployment packaging and portfolio docs
 
 ## Local Setup
 
@@ -104,75 +50,88 @@ uv run alembic upgrade head
 uv run python -m app.seed.load_seed_data
 
 cd ../frontend
+cp .env.example .env.local
 npm ci
 ```
 
 ## Backend
 
-Run these commands from `backend/`:
-
 ```bash
+cd backend
 uv run alembic upgrade head
 uv run python -m app.seed.load_seed_data
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-uv run pytest
+uv run pytest -q
 uv run ruff format --check .
 uv run ruff check .
 ```
 
-The health endpoint is available at `http://localhost:8000/health`.
-
-### Dataset API
-
-With the backend running, list datasets and inspect one by replacing `<dataset-id>` with an ID
-from the list response:
+### Eval gate
 
 ```bash
-curl http://localhost:8000/datasets
-curl http://localhost:8000/datasets/<dataset-id>
-curl http://localhost:8000/datasets/<dataset-id>/test-cases
+uv run python -m app.cli.eval_gate \
+  --dataset-name "Support Classification Seed" \
+  --prompt-name support_classification_baseline \
+  --model-name gemini-3.1-flash-lite \
+  --min-pass-rate 0.9 \
+  --min-avg-score 0.85 \
+  --max-cost-usd 1.0 \
+  --max-p95-latency-ms 5000 \
+  --mock \
+  --report-path /tmp/eval-gate-report.json
 ```
 
-Import a JSONL file atomically (requires `jq`):
+Exit codes: `0` pass, `1` threshold failure, `2` config error, `3` runtime error.
 
-```bash
-jq -Rs \
-  '{name: "Support Classification Copy", workflow_type: "support_classification", source_filename: "support_classification.jsonl", jsonl_content: .}' \
-  backend/app/seed/support_classification.jsonl \
-  | curl --fail-with-body -X POST http://localhost:8000/datasets/import-jsonl \
-      -H 'Content-Type: application/json' --data-binary @-
+### Judge configuration
+
+Set these in the ignored root `.env` file:
+
+```dotenv
+LLM_JUDGE_PROVIDER=gemini
+LLM_JUDGE_ENABLED=true
+GEMINI_API_KEY=replace-with-your-key
+LLM_JUDGE_MODEL=gemini-3.1-flash-lite
+LLM_JUDGE_TIMEOUT_SECONDS=30
+OPENAI_API_KEY=
+BACKEND_CORS_ORIGINS=http://localhost:3000
 ```
 
-An invalid line or duplicate test-case ID rejects the entire import without creating a dataset.
+`OPENAI_API_KEY` is only required when a `ModelConfig` uses the OpenAI provider. Tests never require it.
 
 ## Frontend
 
-Run these commands from `frontend/`:
-
 ```bash
+cd frontend
 npm run dev
 npm run check
 npm run build
 ```
 
-The frontend is available at `http://localhost:3000`. Open the dataset browser at
-`http://localhost:3000/datasets` after starting the backend and loading seed data.
+Open `http://localhost:3000` for the dashboard.
 
-## Backend Docker Image
+## Documentation
 
-From the repository root:
+- [Deployment](docs/deployment.md)
+- [Case study](docs/case-study.md)
+- [Demo script](docs/demo-script.md)
+- [Resume bullets](docs/resume-bullets.md)
+- [Agent conventions](AGENTS.md)
+
+## Verification
 
 ```bash
 cd backend
-docker build -t llm-evalops-backend .
-docker run -p 8000:8000 --env-file ../.env.example llm-evalops-backend
-curl http://localhost:8000/health
+uv run alembic upgrade head
+uv run pytest -q
+uv run ruff format --check .
+uv run ruff check .
+
+cd ../frontend
+npm run check
+npm run build
+
+git diff --check
+git check-ignore -v .env
+git status
 ```
-
-The standalone container health check reports a degraded status until PostgreSQL is reachable from inside the container. For local development, run PostgreSQL with Docker Compose and provide a container-reachable `DATABASE_URL`.
-
-## Deployment Notes
-
-- Vercel will deploy `frontend/`.
-- Cloud Run will deploy the backend container later.
-- No deployment automation is included yet.

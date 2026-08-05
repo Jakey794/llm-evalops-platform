@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     llm_judge_provider: str = Field(default="gemini", min_length=1)
     llm_judge_enabled: bool = False
     gemini_api_key: str | None = None
-    llm_judge_model: str = Field(default="gemini-2.5-flash-lite", min_length=1)
+    llm_judge_model: str = Field(default="gemini-3.1-flash-lite", min_length=1)
     llm_judge_timeout_seconds: float = Field(default=30.0, gt=0)
 
     model_config = SettingsConfigDict(

@@ -64,7 +64,7 @@ def mock_settings(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda: SimpleNamespace(
             llm_judge_provider="gemini",
             gemini_api_key="test-gemini-key",
-            llm_judge_model="gemini-2.5-flash-lite",
+            llm_judge_model="gemini-3.1-flash-lite",
             llm_judge_timeout_seconds=30.0,
         ),
     )
@@ -96,7 +96,7 @@ def test_judge_settings_default_to_gemini_and_read_gemini_key(monkeypatch) -> No
 
     assert settings.llm_judge_provider == "gemini"
     assert settings.gemini_api_key == "test-gemini-key"
-    assert settings.llm_judge_model == "gemini-2.5-flash-lite"
+    assert settings.llm_judge_model == "gemini-3.1-flash-lite"
 
 
 def test_gemini_is_default_and_returns_validated_structured_result(monkeypatch) -> None:
@@ -109,11 +109,11 @@ def test_gemini_is_default_and_returns_validated_structured_result(monkeypatch) 
     assert result.judge_output == valid_judge_output()
     assert result.usage == JudgeUsage(input_tokens=20, output_tokens=10, total_tokens=30)
     assert result.latency_ms == 125
-    assert result.model_name == "gemini-2.5-flash-lite"
+    assert result.model_name == "gemini-3.1-flash-lite"
     assert result.raw_output == {"response_id": "gemini-judge-123"}
     assert result.error is None
     call = client.models.generate_content.call_args.kwargs
-    assert call["model"] == "gemini-2.5-flash-lite"
+    assert call["model"] == "gemini-3.1-flash-lite"
     assert '"score": 1.0' in call["contents"]
     assert call["config"].response_mime_type == "application/json"
     response_schema = call["config"].response_schema
