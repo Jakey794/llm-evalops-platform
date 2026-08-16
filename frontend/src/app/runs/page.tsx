@@ -1,6 +1,15 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { RunTable } from "@/components/runs/run-table";
 import { getEvalRuns } from "@/lib/api";
+
+export const metadata: Metadata = {
+	title: "Evaluation runs",
+	description:
+		"Inspect completed LLM evaluation runs, cost, latency, and quality.",
+	alternates: { canonical: "/runs" },
+	robots: { index: false, follow: false },
+};
 
 export default async function RunsPage() {
 	const runs = await getEvalRuns();
@@ -13,9 +22,9 @@ export default async function RunsPage() {
 				</p>
 				<div className="mt-2 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
 					<div>
-						<h2 className="text-3xl font-semibold tracking-tight text-white">
+						<h1 className="text-3xl font-semibold tracking-tight text-white">
 							Eval runs
-						</h2>
+						</h1>
 						<p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
 							Inspect synchronous evaluation runs, execution cost, and latency.
 						</p>

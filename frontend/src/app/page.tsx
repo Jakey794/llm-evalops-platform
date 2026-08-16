@@ -52,9 +52,9 @@ export default async function DashboardPage() {
 					<p className="text-sm font-medium uppercase text-slate-500">
 						Dashboard
 					</p>
-					<h2 className="mt-2 text-3xl font-semibold tracking-tight text-white">
+					<h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">
 						LLM Reliability + EvalOps Platform
-					</h2>
+					</h1>
 					<p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
 						Inspect pass rate, cost, latency, and recent eval history across
 						prompt and model versions.

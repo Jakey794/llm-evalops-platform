@@ -96,9 +96,9 @@ export default function DatasetsPage() {
 				<p className="text-sm font-medium uppercase tracking-wide text-slate-500">
 					Eval data
 				</p>
-				<h2 className="mt-2 text-3xl font-semibold tracking-tight text-white">
+				<h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">
 					Datasets
-				</h2>
+				</h1>
 				<p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
 					Browse imported evaluation datasets and inspect their test cases.
 				</p>

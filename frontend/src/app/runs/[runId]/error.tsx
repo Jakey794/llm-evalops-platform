@@ -8,9 +8,9 @@ export default function RunDetailError({ reset }: { reset: () => void }) {
 			className="mx-auto max-w-3xl rounded-lg border border-rose-950 bg-rose-950/20 p-8"
 			role="alert"
 		>
-			<h2 className="text-lg font-semibold text-rose-200">
+			<h1 className="text-lg font-semibold text-rose-200">
 				Unable to load this eval run
-			</h2>
+			</h1>
 			<p className="mt-2 text-sm text-rose-200/70">
 				The run may not exist, or the backend may be unavailable.
 			</p>

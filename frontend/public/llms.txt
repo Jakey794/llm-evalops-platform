@@ -1,0 +1,20 @@
+# LLM Reliability + EvalOps Platform
+
+This repository is a full-stack reference implementation for evaluating LLM-powered applications.
+
+## Primary resources
+
+- Project: https://github.com/Jakey794/llm-evalops-platform
+- Live demo: https://llm-evalops-platform.vercel.app
+- Architecture and setup: https://github.com/Jakey794/llm-evalops-platform#readme
+
+## What it demonstrates
+
+- Versioned evaluation datasets and prompts
+- Deterministic and optional LLM-as-judge graders
+- Quality gates with cost and latency thresholds
+- A FastAPI, PostgreSQL, and Next.js architecture
+
+## Important limitations
+
+This is a portfolio/reference project. The included data is seed data, not customer data. Do not represent it as a hosted multi-tenant service or use it with untrusted production data without adding authentication, authorization, rate limits, and operational controls.
