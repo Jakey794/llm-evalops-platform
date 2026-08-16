@@ -1,5 +1,13 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { NewEvaluationForm } from "@/components/runs/new-evaluation-form";
+
+export const metadata: Metadata = {
+	title: "New evaluation",
+	description: "Create a configured LLM evaluation run.",
+	alternates: { canonical: "/runs/new" },
+	robots: { index: false, follow: false },
+};
 
 export default function NewEvaluationPage() {
 	return (
@@ -8,9 +16,9 @@ export default function NewEvaluationPage() {
 				<p className="text-sm font-medium uppercase tracking-wide text-slate-500">
 					New evaluation
 				</p>
-				<h2 className="mt-2 text-3xl font-semibold tracking-tight text-white">
+				<h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">
 					Launch an eval run
-				</h2>
+				</h1>
 				<p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
 					Pick a seeded dataset, a workflow-compatible prompt version, and a
 					model configuration. The API runs the evaluation synchronously and

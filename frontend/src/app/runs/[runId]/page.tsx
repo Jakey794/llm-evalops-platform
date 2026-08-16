@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { BreakdownTable } from "@/components/dashboard/breakdown-table";
 import { MetricCard } from "@/components/dashboard/metric-card";
@@ -12,6 +13,22 @@ import {
 	getEvalRunResults,
 	getFailedExamples,
 } from "@/lib/api";
+import { siteConfig } from "@/lib/site";
+
+export async function generateMetadata({
+	params,
+}: {
+	params: Promise<{ runId: string }>;
+}): Promise<Metadata> {
+	const { runId } = await params;
+	return {
+		title: "Evaluation run",
+		description: "Inspect an LLM evaluation run and its quality metrics.",
+		alternates: { canonical: `/runs/${encodeURIComponent(runId)}` },
+		robots: { index: false, follow: false },
+		metadataBase: new URL(siteConfig.url),
+	};
+}
 
 export default async function RunDetailPage({
 	params,
@@ -38,9 +55,9 @@ export default async function RunDetailPage({
 				<p className="mt-5 text-sm font-medium uppercase tracking-wide text-slate-500">
 					Run inspection
 				</p>
-				<h2 className="mt-2 text-3xl font-semibold tracking-tight text-white">
+				<h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">
 					{run.prompt_name ?? "Eval run detail"}
-				</h2>
+				</h1>
 				<p className="mt-2 text-sm text-slate-400">
 					{[run.dataset_name, run.model_name, run.prompt_version_label]
 						.filter(Boolean)

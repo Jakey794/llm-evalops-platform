@@ -11,23 +11,26 @@ const navItems = [
 
 export function Sidebar() {
 	return (
-		<aside className="hidden min-h-screen w-64 border-r border-slate-800 bg-slate-950 px-5 py-6 md:block">
+		<aside className="border-b border-slate-800 bg-slate-950 px-4 py-4 md:min-h-screen md:w-64 md:border-r md:border-b-0 md:px-5 md:py-6">
 			<div>
 				<p className="text-xs font-semibold uppercase text-slate-500">
 					EvalOps / LLM Reliability
 				</p>
-				<h1 className="mt-2 text-xl font-semibold text-slate-50">
+				<p className="mt-2 text-xl font-semibold text-slate-50">
 					Reliability Console
-				</h1>
-				<p className="mt-2 text-sm text-slate-500">
+				</p>
+				<p className="mt-1 text-sm text-slate-500">
 					Prompt, model, dataset, and grader regression testing.
 				</p>
 			</div>
 
-			<nav className="mt-8 space-y-1">
+			<nav
+				aria-label="Primary"
+				className="mt-4 flex gap-1 overflow-x-auto md:mt-8 md:block md:space-y-1"
+			>
 				{navItems.map((item) => (
 					<Link
-						className="block rounded-lg px-3 py-2 text-sm font-medium text-slate-300 hover:bg-slate-900 hover:text-white"
+						className="block shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-slate-300 hover:bg-slate-900 hover:text-white"
 						href={item.href}
 						key={item.href}
 					>

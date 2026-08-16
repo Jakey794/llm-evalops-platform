@@ -1,6 +1,14 @@
+import type { Metadata } from "next";
 import { EmptyState } from "@/components/dashboard/state-banners";
 import { getPromptVersions } from "@/lib/api";
 import type { PromptVersion } from "@/lib/types";
+
+export const metadata: Metadata = {
+	title: "Prompt versions",
+	description: "Inspect versioned prompts used in LLM evaluation workflows.",
+	alternates: { canonical: "/prompts" },
+	robots: { index: false, follow: false },
+};
 
 export default async function PromptsPage() {
 	let prompts: PromptVersion[] = [];
@@ -19,9 +27,9 @@ export default async function PromptsPage() {
 		<div className="mx-auto max-w-7xl">
 			<header className="border-b border-slate-800 pb-6">
 				<p className="text-sm font-medium uppercase text-slate-500">Prompts</p>
-				<h2 className="mt-2 text-3xl font-semibold tracking-tight text-white">
+				<h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">
 					Prompt versions
-				</h2>
+				</h1>
 				<p className="mt-3 max-w-2xl text-sm text-slate-400">
 					Baseline and intentionally degraded prompt versions used for
 					regression comparisons across workflows.
@@ -69,6 +77,7 @@ export default async function PromptsPage() {
 											{new Intl.DateTimeFormat("en-CA", {
 												dateStyle: "medium",
 												timeStyle: "short",
+												timeZone: "UTC",
 											}).format(new Date(prompt.created_at))}
 										</td>
 									</tr>

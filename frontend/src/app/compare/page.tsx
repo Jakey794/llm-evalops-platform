@@ -75,9 +75,9 @@ export default function ComparePage() {
 		<div className="mx-auto max-w-7xl">
 			<header className="border-b border-slate-800 pb-6">
 				<p className="text-sm font-medium uppercase text-slate-500">Compare</p>
-				<h2 className="mt-2 text-3xl font-semibold tracking-tight text-white">
+				<h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">
 					Prompt and model comparison
-				</h2>
+				</h1>
 				<p className="mt-3 max-w-2xl text-sm text-slate-400">
 					Compare up to five completed runs on pass rate, score, cost, and
 					latency.

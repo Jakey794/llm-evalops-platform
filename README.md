@@ -1,6 +1,9 @@
 # LLM Reliability + EvalOps Platform
 
-A production-shaped platform for managing and evaluating the reliability of LLM-powered applications.
+A full-stack reference implementation for measuring the reliability of LLM-powered applications. It combines versioned evaluation data and prompts, deterministic graders, optional LLM-as-judge scoring, quality gates, and cost-latency analytics.
+
+> [!IMPORTANT]
+> The project includes synthetic seed data and is intended for local development, demonstrations, and portfolio review. It is not a multi-tenant hosted service: do not connect it to untrusted production data or expose write endpoints without adding authentication, authorization, rate limits, audit logging, and a threat-model review.
 
 ## Architecture
 
@@ -36,6 +39,13 @@ Providers (optional at runtime, mocked in CI):
 - CI eval gate CLI with thresholds, stable exit codes, JSON reports, and seeded GitHub Actions Postgres
 - RAG QA workflow using supplied documents (no vector database)
 - Cloud Run + Vercel deployment packaging and portfolio docs
+
+## Project status and security
+
+- The backend uses an allowlist CORS configuration; set `BACKEND_CORS_ORIGINS` to exact approved origins.
+- Provider keys stay in ignored environment files. Never commit `.env`, `.env.local`, or real datasets.
+- The included dashboard is deliberately not an authentication layer. Treat any public deployment as a demo only unless you add the controls listed above.
+- See [SECURITY.md](SECURITY.md) for reporting guidance and [CONTRIBUTING.md](CONTRIBUTING.md) for contribution expectations.
 
 ## Local Setup
 
@@ -131,6 +141,8 @@ npm run build
 
 Open `http://localhost:3000` for the dashboard.
 
+For a production Vercel deployment, set `NEXT_PUBLIC_API_BASE_URL` to the approved backend URL and `NEXT_PUBLIC_SITE_URL` to the canonical public URL. The latter keeps canonical, sitemap, robots, and social metadata consistent.
+
 - `/runs/new` — launch a synchronous evaluation (datasets, prompt versions, model configs)
 - `/runs` — run history
 - `/compare` — multi-run cost/latency vs quality
@@ -143,6 +155,9 @@ Open `http://localhost:3000` for the dashboard.
 - [Demo script](docs/demo-script.md)
 - [Resume bullets](docs/resume-bullets.md)
 - [Agent conventions](AGENTS.md)
+- [Security policy](SECURITY.md)
+- [Contributing](CONTRIBUTING.md)
+- [License](LICENSE)
 
 ## Verification
 

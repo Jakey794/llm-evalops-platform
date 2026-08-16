@@ -86,9 +86,10 @@ export function DatasetTable({
 }
 
 function formatDate(value: string): string {
-	return new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(
-		new Date(value),
-	);
+	return new Intl.DateTimeFormat("en", {
+		dateStyle: "medium",
+		timeZone: "UTC",
+	}).format(new Date(value));
 }
 
 function formatLabel(value: string): string {
