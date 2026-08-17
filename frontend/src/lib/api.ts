@@ -14,9 +14,6 @@ import type {
 	TestCase,
 } from "@/lib/types";
 
-const API_BASE_URL =
-	process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-
 export class ApiError extends Error {
 	readonly status: number;
 	readonly detail: string;
@@ -112,7 +109,10 @@ export async function getModelConfigs(): Promise<ModelConfig[]> {
 }
 
 async function fetchApi<T>(path: string, init?: RequestInit): Promise<T> {
-	const url = `${API_BASE_URL}${path}`;
+	const url =
+		typeof window === "undefined"
+			? `${getServerApiBaseUrl()}${path}`
+			: `/api/backend${path}`;
 	const response = await fetch(url, { cache: "no-store", ...init });
 
 	if (!response.ok) {
@@ -131,4 +131,12 @@ async function fetchApi<T>(path: string, init?: RequestInit): Promise<T> {
 	}
 
 	return response.json() as Promise<T>;
+}
+
+function getServerApiBaseUrl(): string {
+	return (
+		process.env.BACKEND_API_BASE_URL ??
+		process.env.NEXT_PUBLIC_API_BASE_URL ??
+		"http://localhost:8000"
+	).replace(/\/$/, "");
 }
