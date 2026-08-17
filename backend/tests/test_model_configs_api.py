@@ -9,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 from app.db import get_db
 from app.main import create_app
 from app.models import Base, ModelConfig
+from tests.conftest import OPERATOR_HEADERS
 
 
 @pytest.fixture
@@ -49,7 +50,7 @@ def client() -> Generator[TestClient, None, None]:
     app = create_app()
     app.dependency_overrides[get_db] = override_get_db
 
-    with TestClient(app) as test_client:
+    with TestClient(app, headers=OPERATOR_HEADERS) as test_client:
         yield test_client
 
     app.dependency_overrides.clear()

@@ -15,6 +15,7 @@ from app.schemas.datasets import (
     DatasetListItem,
 )
 from app.schemas.test_cases import TestCaseResponse
+from app.security import OperatorPrincipal
 from app.services.jsonl_importer import parse_jsonl_test_cases
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
@@ -30,6 +31,7 @@ def import_dataset_jsonl(
     request: DatasetImportRequest,
     response: Response,
     db: DbSession,
+    _principal: OperatorPrincipal,
 ) -> DatasetImportResponse:
     parsed = parse_jsonl_test_cases(
         request.jsonl_content,

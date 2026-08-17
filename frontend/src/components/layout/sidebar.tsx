@@ -38,6 +38,14 @@ export function Sidebar() {
 					</Link>
 				))}
 			</nav>
+			<form action="/api/auth/logout" className="mt-4 md:mt-8" method="post">
+				<button
+					className="rounded-lg px-3 py-2 text-sm font-medium text-slate-500 hover:bg-slate-900 hover:text-white"
+					type="submit"
+				>
+					Sign out
+				</button>
+			</form>
 		</aside>
 	);
 }

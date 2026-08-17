@@ -3,7 +3,7 @@
 A full-stack reference implementation for measuring the reliability of LLM-powered applications. It combines versioned evaluation data and prompts, deterministic graders, optional LLM-as-judge scoring, quality gates, and cost-latency analytics.
 
 > [!IMPORTANT]
-> The project includes synthetic seed data and is intended for local development, demonstrations, and portfolio review. It is not a multi-tenant hosted service: do not connect it to untrusted production data or expose write endpoints without adding authentication, authorization, rate limits, audit logging, and a threat-model review.
+> The project includes synthetic seed data and is intended for local development, demonstrations, and portfolio review. The deployed dashboard and API are protected, but this is not a multi-tenant identity system. Do not connect it to confidential or regulated data without replacing shared demo credentials with an identity provider and completing an environment-specific security review.
 
 ## Architecture
 
@@ -42,10 +42,12 @@ Providers (optional at runtime, mocked in CI):
 
 ## Project status and security
 
-- The backend uses an allowlist CORS configuration; set `BACKEND_CORS_ORIGINS` to exact approved origins.
+- The dashboard uses signed, HTTP-only sessions with separate viewer and operator passwords.
+- Browser requests use a same-origin Next.js gateway; backend service tokens never enter browser JavaScript.
+- The FastAPI backend requires bearer authentication, applies viewer/operator authorization, enforces bounded read/write rate limits, and emits structured audit events without bodies or secrets.
+- The backend uses an allowlist CORS configuration, although the production dashboard no longer depends on cross-origin browser requests.
 - Provider keys stay in ignored environment files. Never commit `.env`, `.env.local`, or real datasets.
-- The included dashboard is deliberately not an authentication layer. Treat any public deployment as a demo only unless you add the controls listed above.
-- See [SECURITY.md](SECURITY.md) for reporting guidance and [CONTRIBUTING.md](CONTRIBUTING.md) for contribution expectations.
+- See the [threat model](docs/threat-model.md), [security policy](SECURITY.md), and [deployment runbook](docs/deployment.md) before operating a public demo.
 
 ## Local Setup
 
@@ -126,6 +128,8 @@ LLM_JUDGE_MODEL=gemini-3.1-flash-lite
 LLM_JUDGE_TIMEOUT_SECONDS=30
 OPENAI_API_KEY=
 BACKEND_CORS_ORIGINS=http://localhost:3000
+BACKEND_VIEWER_TOKEN=replace-with-at-least-32-random-characters
+BACKEND_OPERATOR_TOKEN=replace-with-a-different-32-character-random-value
 ```
 
 `OPENAI_API_KEY` is only required when a `ModelConfig` uses the OpenAI provider. Tests never require it.
@@ -141,7 +145,7 @@ npm run build
 
 Open `http://localhost:3000` for the dashboard.
 
-For a production Vercel deployment, set `NEXT_PUBLIC_API_BASE_URL` to the approved backend URL and `NEXT_PUBLIC_SITE_URL` to the canonical public URL. The latter keeps canonical, sitemap, robots, and social metadata consistent.
+For production, the browser calls the same-origin `/api/backend/*` gateway. Configure `BACKEND_API_BASE_URL`, the matching backend service tokens, a session secret, and the two dashboard passwords as server-only Vercel variables. `NEXT_PUBLIC_SITE_URL` remains the only public runtime setting and keeps canonical, sitemap, robots, and social metadata consistent. See the [deployment runbook](docs/deployment.md) for the complete list and safe rollout order.
 
 - `/runs/new` — launch a synchronous evaluation (datasets, prompt versions, model configs)
 - `/runs` — run history
@@ -156,6 +160,7 @@ For a production Vercel deployment, set `NEXT_PUBLIC_API_BASE_URL` to the approv
 - [Resume bullets](docs/resume-bullets.md)
 - [Agent conventions](AGENTS.md)
 - [Security policy](SECURITY.md)
+- [Threat model](docs/threat-model.md)
 - [Contributing](CONTRIBUTING.md)
 - [License](LICENSE)
 

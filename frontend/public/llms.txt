@@ -17,4 +17,4 @@ This repository is a full-stack reference implementation for evaluating LLM-powe
 
 ## Important limitations
 
-This is a portfolio/reference project. The included data is seed data, not customer data. Do not represent it as a hosted multi-tenant service or use it with untrusted production data without adding authentication, authorization, rate limits, and operational controls.
+This is a portfolio/reference project. The included data is seed data, not customer data. The reference deployment has shared-role authentication, authorization, rate limits, and audit events, but it is not a hosted multi-tenant identity system and must not be represented as one.

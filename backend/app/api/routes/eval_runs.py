@@ -19,6 +19,7 @@ from app.schemas.eval_results import (
     GraderResultResponse,
 )
 from app.schemas.eval_runs import EvalRunCreate, EvalRunListItem, EvalRunResponse
+from app.security import OperatorPrincipal
 from app.services.analytics import (
     build_compare_response,
     build_dashboard_overview,
@@ -49,6 +50,7 @@ def create_eval_run(
     request: EvalRunCreate,
     db: DbSession,
     provider_factory: ProviderFactoryDependency,
+    _principal: OperatorPrincipal,
 ) -> EvalRun:
     runner = EvalRunner(db, provider_factory=provider_factory)
     try:

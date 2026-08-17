@@ -23,6 +23,7 @@ from app.models import (
 )
 from app.models import TestCase as CaseModel
 from app.services.providers import LLMRequest, LLMResponse
+from tests.conftest import OPERATOR_HEADERS
 
 
 class FakeProvider:
@@ -122,7 +123,7 @@ def api() -> Generator[ApiContext, None, None]:
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_provider_factory] = override_provider_factory
 
-    with TestClient(app) as client:
+    with TestClient(app, headers=OPERATOR_HEADERS) as client:
         yield ApiContext(client, testing_session, *ids)
 
     app.dependency_overrides.clear()
