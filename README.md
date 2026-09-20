@@ -154,7 +154,6 @@ For a production Vercel deployment, set `NEXT_PUBLIC_API_BASE_URL` to the approv
 - [Case study](docs/case-study.md)
 - [Demo script](docs/demo-script.md)
 - [Resume bullets](docs/resume-bullets.md)
-- [Agent conventions](AGENTS.md)
 - [Security policy](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
 - [License](LICENSE)
